@@ -1,4 +1,3 @@
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -8,7 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // Критично для mmm11355.github.io/Miniapp-portf-01/
+  // Пустая строка или './' гарантирует, что пути будут относительными
+  base: './', 
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './'),

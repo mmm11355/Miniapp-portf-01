@@ -45,7 +45,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-600">
     <div id="root"></div>
-    <!-- Точка входа для Vite. При сборке превратится в скомпилированный JS -->
-    <script type="module" src="/index.tsx"></script>
+    <!-- Использование ./index.tsx критически важно для корректной сборки Vite на GitHub Pages -->
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>
