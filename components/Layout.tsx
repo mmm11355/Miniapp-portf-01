@@ -11,33 +11,35 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => {
   const navItems = [
-    { id: 'home', label: 'Инфо', icon: Home },
-    { id: 'portfolio', label: 'Кейсы', icon: Briefcase },
-    { id: 'shop', label: 'Магазин', icon: ShoppingBag },
-    { id: 'bonuses', label: 'Бонусы', icon: Gift },
+    { id: 'home', label: 'ИНФО', icon: Home },
+    { id: 'portfolio', label: 'КЕЙСЫ', icon: Briefcase },
+    { id: 'shop', label: 'МАГАЗИН', icon: ShoppingBag },
+    { id: 'bonuses', label: 'БОНУСЫ', icon: Gift },
     { id: 'contact', label: 'TG', icon: Send },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col max-w-md mx-auto shadow-2xl relative">
-      <header className="sticky top-0 z-40 glass border-b border-slate-100 p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-indigo-200">ОА</div>
-          <span className="font-bold text-slate-800 text-sm tracking-tight">О ГЕТКУРС И НЕ ТОЛЬКО</span>
+    <div className="min-h-screen bg-[#f6f8fb] flex flex-col max-w-md mx-auto relative border-x border-slate-50 overflow-x-hidden">
+      {/* Шапка с выделенным фоном */}
+      <header className="sticky top-0 z-[80] bg-[#f0f3ff]/95 backdrop-blur-md border-b border-indigo-100/50 px-5 py-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3" onClick={() => onNavigate('home')}>
+          <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-md">ОА</div>
+          <div className="flex flex-col">
+             <span className="font-bold text-slate-900 text-[13px] tracking-tight uppercase leading-none">О ГЕТКУРС</span>
+             <span className="font-bold text-indigo-500 text-[9px] tracking-widest uppercase mt-0.5">И НЕ ТОЛЬКО</span>
+          </div>
         </div>
-        <button 
-          onClick={() => onNavigate('admin')}
-          className={`p-2 rounded-xl transition-colors ${activeView === 'admin' ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400'}`}
-        >
-          <ShieldCheck size={20} />
+        <button onClick={() => onNavigate('admin')} className={`p-2 transition-all rounded-xl ${activeView === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-200'}`}>
+          <ShieldCheck size={20} strokeWidth={2.5} />
         </button>
       </header>
 
-      <main className="flex-grow p-4 pb-24 overflow-x-hidden">
+      <main className="flex-grow p-5 pb-32">
         {children}
       </main>
 
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md glass border-t border-slate-200 grid grid-cols-5 h-20 px-1 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+      {/* Навигация с выделенным фоном */}
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#f0f3ff]/95 backdrop-blur-xl border-t border-indigo-100/50 grid grid-cols-5 h-20 px-2 z-[90] pb-safe shadow-[0_-8px_30px_rgba(79,70,229,0.08)]">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
@@ -45,14 +47,12 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
             <button
               key={item.id}
               onClick={() => onNavigate(item.id as ViewState)}
-              className={`flex flex-col items-center justify-center gap-1 transition-all ${
-                isActive ? 'text-indigo-600' : 'text-slate-400'
-              }`}
+              className="flex flex-col items-center justify-center gap-1 transition-all active:scale-90"
             >
-              <div className={`p-2 rounded-xl transition-all ${isActive ? 'bg-indigo-50 scale-105' : ''}`}>
-                <Icon size={isActive ? 22 : 20} strokeWidth={isActive ? 2.5 : 2} />
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-lg' : 'text-indigo-300'}`}>
+                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
               </div>
-              <span className={`text-[9px] font-black uppercase tracking-tighter ${isActive ? 'opacity-100' : 'opacity-70'}`}>
+              <span className={`text-[8px] font-bold tracking-widest ${isActive ? 'text-indigo-700' : 'text-indigo-300/80'}`}>
                 {item.label}
               </span>
             </button>

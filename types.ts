@@ -4,7 +4,7 @@ export interface Product {
   title: string;
   description: string;
   category: string;
-  price: number;
+  price: number | string; // Изменено: теперь может быть строкой
   imageUrl: string; 
   mediaType: 'image' | 'video'; 
   features: string[];
@@ -26,7 +26,7 @@ export interface OrderLog {
   id: string;
   timestamp: number;
   productTitle: string;
-  price: number;
+  price: number | string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
