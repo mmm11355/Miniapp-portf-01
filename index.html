@@ -38,6 +38,7 @@
           text-transform: uppercase;
           color: #6366f1;
           letter-spacing: 0.1em;
+          text-align: center;
         }
     </style>
 <script type="importmap">
@@ -58,7 +59,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-600">
     <div id="root"></div>
-    <!-- Ссылка на точку входа. Vite при сборке заменит это на скомпилированный JS файл -->
-    <script type="module" src="/index.tsx"></script>
+    <!-- Используем относительный путь ./index.tsx (с точкой в начале) -->
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>
