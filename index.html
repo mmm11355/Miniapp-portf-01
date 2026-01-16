@@ -26,6 +26,19 @@
         /* Transitions */
         .page-enter { opacity: 0; transform: translateY(10px); }
         .page-enter-active { opacity: 1; transform: translateY(0); transition: all 300ms ease-out; }
+
+        #root:empty::before {
+          content: 'Загрузка приложения...';
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          font-size: 12px;
+          font-weight: 900;
+          text-transform: uppercase;
+          color: #6366f1;
+          letter-spacing: 0.1em;
+        }
     </style>
 <script type="importmap">
 {
@@ -45,7 +58,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-600">
     <div id="root"></div>
-    <!-- Использование ./index.tsx критически важно для корректной сборки Vite на GitHub Pages -->
-    <script type="module" src="./index.tsx"></script>
+    <!-- Ссылка на точку входа. Vite при сборке заменит это на скомпилированный JS файл -->
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

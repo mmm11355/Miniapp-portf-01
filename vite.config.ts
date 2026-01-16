@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
-  // Пустая строка или './' гарантирует, что пути будут относительными
+  // Относительный базовый путь критически важен для GitHub Pages
   base: './', 
   resolve: {
     alias: {
@@ -18,6 +18,7 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'esnext',
+    assetsDir: 'assets',
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
