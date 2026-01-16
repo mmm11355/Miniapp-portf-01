@@ -19,14 +19,12 @@ const getWebhookUrl = () => {
 let globalSessionId: string | null = null;
 const formatNow = () => new Date().toLocaleString('ru-RU');
 
-// Универсальная функция отправки данных в Google Sheets через POST
 const sendToScript = async (payload: any) => {
   const webhook = getWebhookUrl();
-  if (!webhook) return;
+  if (!webhook || webhook.trim() === '') return;
 
   try {
-    // Используем POST с text/plain, чтобы избежать проблем с CORS (Preflight)
-    // Google Script отлично читает это через e.postData.contents
+    // text/plain — это ключ к успеху для Google Script + CORS (no-cors)
     await fetch(webhook, {
       method: 'POST',
       mode: 'no-cors',
@@ -34,19 +32,23 @@ const sendToScript = async (payload: any) => {
       body: JSON.stringify(payload)
     });
   } catch (e) {
-    console.error("Analytics send error:", e);
+    console.error("Critical Analytics Error:", e);
   }
 };
 
 export const analyticsService = {
   getSessions: (): Session[] => {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) { return []; }
   },
 
   getOrders: (): OrderLog[] => {
-    const data = localStorage.getItem(ORDERS_KEY);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(ORDERS_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) { return []; }
   },
 
   logOrder: async (order: Omit<OrderLog, 'id' | 'timestamp'>, currentSessionId?: string) => {
@@ -139,7 +141,7 @@ export const analyticsService = {
       type: 'path_update',
       sessionId: sessionId,
       path: path,
-      product: `Переход: ${path}`, // Для колонки "Товар"
+      product: `Переход: ${path}`,
       dateStr: formatNow()
     });
   },

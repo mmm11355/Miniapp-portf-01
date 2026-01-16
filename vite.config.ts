@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // Критично для GitHub Pages
+  base: './', // Критично для mmm11355.github.io/Miniapp-portf-01/
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './'),
