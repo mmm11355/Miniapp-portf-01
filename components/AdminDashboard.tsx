@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { RefreshCw } from 'lucide-react';
 import React, { useMemo, useState, useEffect } from 'react';
 
@@ -10,7 +10,17 @@ const AdminDashboard: React.FC = () => {
   const [sessions, setSessions] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
 
-  // Функция для безопасного извлечения данных из объекта/строки
+  // Функция для очистки текста от JSON и объектов
+  const cleanText = (val: any, fallback: string = 'Unknown'): string => {
+    if (val === null || val === undefined) return fallback;
+    const str = String(val).trim();
+    // Если строка похожа на JSON или содержит [object, значит это ошибка данных
+    if (str.startsWith('{') || str.startsWith('[') || str.includes('[object')) {
+      return fallback;
+    }
+    return str;
+  };
+
   const safeParse = (raw: any) => {
     let obj = raw;
     if (typeof raw === 'string') {
@@ -43,20 +53,19 @@ const AdminDashboard: React.FC = () => {
           .map((item: any) => {
             const s = safeParse(item);
             return {
-              id: String(s.id || Math.random().toString(36).substr(2, 9)),
-              city: String(s.city || 'Unknown'),
-              utmSource: String(s.utmsource || s.utm_source || 'direct').toUpperCase(),
+              id: cleanText(s.id, Math.random().toString(36).substr(2, 9)),
+              city: cleanText(s.city, 'Unknown'),
+              utmSource: cleanText(s.utmsource || s.utm_source, 'DIRECT').toUpperCase(),
               startTime: s.starttime || s.timestamp || new Date().toISOString()
             };
-          })
-          .filter((s: any) => s.city !== '[object Object]');
+          });
         
         const remoteOrders = (result.orders || [])
           .map((item: any) => {
             const o = safeParse(item);
             return {
-              productTitle: String(o.producttitle || o.title || 'Товар'),
-              customerEmail: String(o.customeremail || o.email || ''),
+              productTitle: cleanText(o.producttitle || o.title, 'Товар'),
+              customerEmail: cleanText(o.customeremail || o.email, ''),
               price: Number(o.price || o.summa) || 0
             };
           });
@@ -79,16 +88,19 @@ const AdminDashboard: React.FC = () => {
   const pathStats = useMemo(() => {
     const counts: Record<string, number> = {};
     sessions.forEach(s => {
-      const label = s.city || 'Unknown';
+      const label = s.city;
       counts[label] = (counts[label] || 0) + 1;
     });
-    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 5);
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a,b) => b.value - a.value)
+      .slice(0, 5);
   }, [sessions]);
 
   const utmStats = useMemo(() => {
     const counts: Record<string, number> = {};
     sessions.forEach(s => {
-      const src = s.utmSource || 'DIRECT';
+      const src = s.utmSource;
       counts[src] = (counts[src] || 0) + 1;
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
@@ -116,7 +128,7 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       {activeTab === 'overview' && (
-        <div className="space-y-4 animate-in fade-in">
+        <div className="space-y-4 animate-in fade-in duration-300">
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
               <p className="text-[8px] text-slate-400 font-black uppercase mb-1">Визиты</p>
@@ -128,7 +140,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-             <h3 className="text-[9px] font-black uppercase text-slate-400 mb-4 tracking-widest">Топ локаций</h3>
+             <h3 className="text-[9px] font-black uppercase text-slate-400 mb-4 tracking-widest text-center">Топ городов</h3>
              <div className="w-full h-[160px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={pathStats}>
@@ -142,7 +154,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {activeTab === 'stats' && (
-        <div className="space-y-6 animate-in fade-in">
+        <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
              <h3 className="text-[9px] font-black uppercase text-slate-400 mb-4 tracking-widest text-center">Источники трафика</h3>
              <div className="w-full h-[200px]">
@@ -161,28 +173,29 @@ const AdminDashboard: React.FC = () => {
             <h3 className="text-[9px] font-black uppercase text-slate-400 px-4 mb-2 tracking-widest">Последние визиты</h3>
             <div className="space-y-2">
               {sessions.slice(0, 8).map((s, i) => (
-                <div key={s.id || i} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between shadow-sm mx-1">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <div className="overflow-hidden">
+                <div key={s.id || i} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                    <div className="truncate">
                       <p className="text-xs font-black text-slate-900 truncate">{s.city}</p>
                       <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">{s.utmSource}</p>
                     </div>
                   </div>
-                  <div className="text-[9px] text-slate-300 font-black">
+                  <div className="text-[9px] text-slate-300 font-black flex-shrink-0">
                     {s.startTime && !isNaN(Date.parse(s.startTime)) 
                       ? new Date(s.startTime).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})
                       : '--:--'}
                   </div>
                 </div>
               ))}
+              {sessions.length === 0 && <div className="p-8 text-center text-[10px] font-black text-slate-300 uppercase">Нет данных</div>}
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'leads' && (
-        <div className="space-y-3 animate-in fade-in">
+        <div className="space-y-3 animate-in fade-in duration-300">
           {orders.length === 0 ? (
             <div className="py-20 text-center text-slate-300 text-[10px] font-black uppercase tracking-widest">Заказов пока нет</div>
           ) : (
