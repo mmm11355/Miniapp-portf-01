@@ -177,8 +177,9 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Важно: записываем переход только если сессия уже готова или в очередь
-    analyticsService.updateSessionPath(sessionId, view);
+    if (sessionId) {
+      analyticsService.updateSessionPath(sessionId, view);
+    }
     window.scrollTo(0, 0);
   }, [view, sessionId]);
 
@@ -200,12 +201,12 @@ const App: React.FC = () => {
   const sendToGoogleSheet = async (leadData: any) => {
     if (!telegramConfig.googleSheetWebhook) return;
     try {
-      const url = `${telegramConfig.googleSheetWebhook}${telegramConfig.googleSheetWebhook.includes('?') ? '&' : '?'}action=log&type=lead&sessionId=${sessionId}&name=${encodeURIComponent(leadData.name)}`;
-      await fetch(url, {
+      await fetch(telegramConfig.googleSheetWebhook, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
+          action: 'log',
           type: 'lead',
           sessionId: sessionId,
           name: leadData.name,
@@ -213,7 +214,7 @@ const App: React.FC = () => {
           phone: leadData.phone,
           product: leadData.productTitle,
           price: leadData.price,
-          timestamp: new Date().toLocaleString('ru-RU')
+          dateStr: new Date().toLocaleString('ru-RU')
         })
       });
     } catch (e) { console.error("Sheet Error", e); }
