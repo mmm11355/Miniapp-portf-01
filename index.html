@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -31,22 +30,22 @@
 <script type="importmap">
 {
   "imports": {
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "url": "https://esm.sh/url@^0.11.4",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "path": "https://esm.sh/path@^0.12.7"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "path": "https://esm.sh/path@^0.12.7",
+    "url": "https://esm.sh/url@^0.11.4"
   }
 }
 </script>
 </head>
 <body class="bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-600">
     <div id="root"></div>
-    <!-- Использование точки перед путем крайне важно для GitHub Pages -->
+    <!-- Vite автоматически заменит этот путь при сборке. Использование ./ критично для GitHub Pages -->
     <script type="module" src="./index.tsx"></script>
 </body>
 </html>
