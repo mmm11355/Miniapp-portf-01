@@ -17,7 +17,6 @@ const App: React.FC = () => {
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const isProcessingRef = useRef(false); 
   
-  // КЭШ-БАСТИНГ: v28 для принудительного обновления структуры данных у пользователей
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem('olga_products_v28');
@@ -118,12 +117,12 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const checkInterval = setInterval(async () => {
-      if (isProcessingRef.current || !telegramConfig.botToken || !telegramConfig.chatId) return;
+    const monitorOrders = async () => {
+      if (isProcessingRef.current) return;
       isProcessingRef.current = true;
 
       try {
-        const orders = analyticsService.getOrders();
+        const localOrders = analyticsService.getOrders();
         const now = Date.now();
         
         const safeParse = (key: string) => {
@@ -144,50 +143,61 @@ const App: React.FC = () => {
 
         const sanitize = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        for (const order of orders) {
-          const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
-          const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
+        // ГЛОБАЛЬНЫЙ МОНИТОРИНГ: Проверяем и локальные, и облачные заказы
+        const allOrdersToCheck = [...localOrders];
+        cloudOrders.forEach(co => {
+          if (!allOrdersToCheck.find(lo => lo.id === co.id)) {
+            allOrdersToCheck.push(co);
+          }
+        });
 
-          // ЕСЛИ ПРОШЛО 10 МИНУТ И НЕ ОПЛАЧЕНО
-          if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
-            const cancelMsg = `<b>🔴 ЗАКАЗ ОТМЕНЕН (10 МИН)</b>\n\n` +
-                              `<b>ID:</b> <code>${order.id}</code>\n` +
-                              `<b>Клиент:</b> ${sanitize(order.customerName)}\n` +
-                              `<b>Товар:</b> ${sanitize(order.productTitle)}\n` +
-                              `<b>Сумма:</b> ${order.price} ₽\n\n` +
-                              `<i>Заказ перенесен в архив.</i>`;
-            try {
-              const res = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+        for (const order of allOrdersToCheck) {
+          // Ищем актуальный статус в облаке (если он там есть)
+          const cloudInfo = cloudOrders.find((co: any) => co.id === order.id);
+          const currentStatus = cloudInfo?.paymentStatus || order.paymentStatus;
+          const isPaid = currentStatus === 'paid';
+
+          // ЕСЛИ ПРОШЛО 10 МИНУТ И ВСЁ ЕЩЁ ОЖИДАНИЕ
+          if (!isPaid && currentStatus === 'pending' && (now - order.timestamp) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
+            // Сразу шлем команду на отмену в Google Таблицу и обновляем локально
+            await analyticsService.updateOrderStatus(order.id, 'failed');
+            processedCancelled.push(order.id);
+            localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
+
+            if (telegramConfig.botToken && telegramConfig.chatId) {
+              const cancelMsg = `<b>🔴 ЗАКАЗ ОТМЕНЕН (AUTO-ARCHIVE)</b>\n\n` +
+                                `<b>ID:</b> <code>${order.id}</code>\n` +
+                                `<b>Клиент:</b> ${sanitize(order.customerName)}\n` +
+                                `<b>Товар:</b> ${sanitize(order.productTitle)}\n` +
+                                `<b>Сумма:</b> ${order.price} ₽\n\n` +
+                                `<i>Заказ перенесен в архив из-за отсутствия оплаты дольше 10 мин.</i>`;
+              fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: telegramConfig.chatId, text: cancelMsg, parse_mode: 'HTML' })
-              });
-              
-              if (res.ok) { // ТОЛЬКО ПРИ УСПЕШНОЙ ОТПРАВКЕ ПИШЕМ В АРХИВ
-                await analyticsService.updateOrderStatus(order.id, 'failed');
-                processedCancelled.push(order.id);
-                localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
-              }
-            } catch (e) { console.error("Monitoring: Cancel Notify Failed", e); }
+              }).catch(e => console.error("Monitoring: Cancel Notify Failed", e));
+            }
             continue;
           }
 
-          // ЕСЛИ ПРОШЛО 5 МИНУТ И НЕ ОПЛАЧЕНО
-          if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
-            const message = `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>Клиент:</b> ${sanitize(order.customerName)}\n<b>Товар:</b> ${sanitize(order.productTitle)}\n<b>Сумма:</b> ${order.price} ₽`;
-            try {
-              const res = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+          // ЕСЛИ ПРОШЛО 5 МИНУТ
+          if (!isPaid && currentStatus === 'pending' && (now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
+            if (telegramConfig.botToken && telegramConfig.chatId) {
+              const message = `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>ID:</b> <code>${order.id}</code>\n<b>Клиент:</b> ${sanitize(order.customerName)}\n<b>Товар:</b> ${sanitize(order.productTitle)}`;
+              fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: telegramConfig.chatId, text: message, parse_mode: 'HTML' })
-              });
-              if (res.ok) {
-                processedNotifies.push(order.id);
-                localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
-              }
-            } catch (e) { console.error("Monitoring: Pending Notify Failed", e); }
+              }).then(res => {
+                if (res.ok) {
+                  processedNotifies.push(order.id);
+                  localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
+                }
+              }).catch(e => console.error("Monitoring: Pending Notify Failed", e));
+            }
           }
 
+          // Синхронизируем статус оплаты, если в облаке оплачено, а у нас нет
           if (isPaid && order.paymentStatus !== 'paid') {
             await analyticsService.updateOrderStatus(order.id, 'paid');
           }
@@ -197,7 +207,10 @@ const App: React.FC = () => {
       } finally {
         isProcessingRef.current = false;
       }
-    }, 60000); // Раз в минуту
+    };
+
+    monitorOrders();
+    const checkInterval = setInterval(monitorOrders, 60000); 
     return () => clearInterval(checkInterval);
   }, [telegramConfig]);
 
@@ -216,7 +229,6 @@ const App: React.FC = () => {
             let gallery = [];
             try { gallery = typeof (p.detailgallery || p.detailGallery) === 'string' ? JSON.parse(p.detailgallery || p.detailGallery) : (p.detailgallery || p.detailGallery || []); } catch (e) {}
             
-            // УЛУЧШЕННЫЙ МАППИНГ ДЛЯ ТЕКСТА КНОПКИ ЛОНГРИДА
             const dBtnText = p.detailbuttontext || p.detailbutton || p.кнопкалонгрида || p.detailButtonText || p.buttontext || p.buttonText || '';
 
             return {
@@ -311,7 +323,7 @@ const App: React.FC = () => {
     <div key={p.id} style={{ backgroundColor: p.cardBgColor }} className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col active:scale-[0.99] transition-all mb-5">
       <div className="p-4 pb-0 flex justify-between items-center">
          <span style={{ color: p.buttonColor }} className="text-[10px] font-black uppercase tracking-[0.15em] opacity-60">{p.category}</span>
-         <Sparkles size={14} style={{ color: p.buttonColor }} className="opacity-30" />
+         <span className="opacity-30"><Sparkles size={14} style={{ color: p.buttonColor }} /></span>
       </div>
       <div className="p-4 pt-2">
         <h3 style={{ color: p.titleColor }} className="text-[17px] font-bold tracking-tight leading-tight">{p.title}</h3>
