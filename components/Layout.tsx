@@ -20,22 +20,22 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
 
   return (
     <div className="min-h-screen bg-[#f6f8fb] flex flex-col max-w-md mx-auto relative border-x border-slate-50 overflow-x-hidden">
-      {/* Шапка стала более компактной (py-2.5 вместо py-4) */}
-      <header className="sticky top-0 z-[80] bg-[#f0f3ff]/95 backdrop-blur-md border-b border-indigo-100/50 px-5 py-2.5 flex items-center justify-between shadow-sm">
+      {/* Шапка: возврат к py-4 и крупным текстам */}
+      <header className="sticky top-0 z-[80] bg-[#f0f3ff]/95 backdrop-blur-md border-b border-indigo-100/50 px-5 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3" onClick={() => onNavigate('home')}>
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-[10px] shadow-md">ОА</div>
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-[12px] shadow-md">ОА</div>
           <div className="flex flex-col">
-             <span className="font-bold text-slate-900 text-[12px] tracking-tight uppercase leading-none">О ГЕТКУРС</span>
-             <span className="font-bold text-indigo-500 text-[8px] tracking-widest uppercase mt-0.5">И НЕ ТОЛЬКО</span>
+             <span className="font-bold text-slate-900 text-[14px] tracking-tight uppercase leading-none">О ГЕТКУРС</span>
+             <span className="font-bold text-indigo-500 text-[9px] tracking-widest uppercase mt-1">И НЕ ТОЛЬКО</span>
           </div>
         </div>
-        <button onClick={() => onNavigate('admin')} className={`p-2 transition-all rounded-xl ${activeView === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-200'}`}>
-          <ShieldCheck size={18} strokeWidth={2.5} />
+        <button onClick={() => onNavigate('admin')} className={`p-2.5 transition-all rounded-xl ${activeView === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-200'}`}>
+          <ShieldCheck size={20} strokeWidth={2.5} />
         </button>
       </header>
 
-      {/* Основной отступ уменьшен (p-4 вместо p-5) */}
-      <main className="flex-grow p-4 pb-32">
+      {/* Контент: возврат к p-5 */}
+      <main className="flex-grow p-5 pb-32">
         {children}
       </main>
 
@@ -50,10 +50,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
               onClick={() => onNavigate(item.id as ViewState)}
               className="flex flex-col items-center justify-center gap-1 transition-all active:scale-90"
             >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-lg' : 'text-indigo-300'}`}>
-                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-lg' : 'text-indigo-300'}`}>
+                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
               </div>
-              <span className={`text-[8px] font-bold tracking-widest ${isActive ? 'text-indigo-700' : 'text-indigo-300/80'}`}>
+              <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-indigo-700' : 'text-indigo-300/80'}`}>
                 {item.label}
               </span>
             </button>

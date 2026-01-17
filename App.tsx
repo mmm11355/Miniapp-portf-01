@@ -240,27 +240,27 @@ const App: React.FC = () => {
   return (
     <Layout activeView={view} onNavigate={handleNavigate}>
       {view === 'home' && (
-        <div className="space-y-3 animate-in fade-in duration-500">
-          <div className="text-center py-2">
-            <div className="w-32 h-32 mx-auto relative mb-2">
-              <div className="relative w-full h-full bg-white rounded-[2.2rem] p-1 shadow-2xl overflow-hidden border-4 border-white">
-                <img src="https://i.imgur.com/bQ8ic2w.png" alt="Ольга" className="w-full h-full object-cover rounded-[1.9rem]" />
+        <div className="space-y-5 animate-in fade-in duration-500">
+          <div className="text-center py-4">
+            <div className="w-40 h-40 mx-auto relative mb-4">
+              <div className="relative w-full h-full bg-white rounded-[2.5rem] p-1.5 shadow-2xl overflow-hidden border-4 border-white">
+                <img src="https://i.imgur.com/bQ8ic2w.png" alt="Ольга" className="w-full h-full object-cover rounded-[2.2rem]" />
               </div>
             </div>
-            <h1 className="text-xl font-black text-slate-900 tracking-tighter uppercase leading-none">Ольга Антонова</h1>
-            <p className="text-[8px] font-black text-indigo-600 uppercase tracking-[0.2em] mt-1.5">Решения GetCourse & Prodamus.XL</p>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Ольга Антонова</h1>
+            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.25em] mt-2.5">Решения GetCourse & Prodamus.XL</p>
           </div>
           
-          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-2">
-            <div className="flex items-center gap-3.5"><Trophy className="text-amber-500 flex-shrink-0" size={16} /><p className="text-[10px] font-bold text-slate-700">Победитель Хакатона EdMarket</p></div>
-            <div className="flex items-center gap-3.5"><Award className="text-indigo-500 flex-shrink-0" size={16} /><p className="text-[10px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
-            <div className="flex items-center gap-3.5"><BriefcaseIcon className="text-emerald-500 flex-shrink-0" size={16} /><p className="text-[10px] font-bold text-slate-700">60+ реализованных проектов</p></div>
-            <div className="flex items-center gap-3.5"><Globe className="text-blue-500 flex-shrink-0" size={16} /><p className="text-[10px] font-bold text-slate-700 truncate">Сайт: <a href="https://vk.cc/cOx50S" target="_blank" className="text-indigo-600 underline">https://vk.cc/cOx50S</a></p></div>
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+            <div className="flex items-center gap-4"><Trophy className="text-amber-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700">Победитель Хакатона EdMarket</p></div>
+            <div className="flex items-center gap-4"><Award className="text-indigo-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
+            <div className="flex items-center gap-4"><BriefcaseIcon className="text-emerald-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700">60+ реализованных проектов</p></div>
+            <div className="flex items-center gap-4"><Globe className="text-blue-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700 truncate">Сайт: <a href="https://vk.cc/cOx50S" target="_blank" className="text-indigo-600 underline">https://vk.cc/cOx50S</a></p></div>
           </div>
           
-          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between active:scale-[0.98] transition-all">
-            <div className="text-left"><h3 className="text-base font-black leading-none mb-1 uppercase">Нужна помощь?</h3><p className="text-[8px] font-black opacity-70 uppercase tracking-widest">СВЯЗАТЬСЯ В TELEGRAM</p></div>
-            <Send size={24} className="opacity-30" />
+          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between active:scale-[0.98] transition-all">
+            <div className="text-left"><h3 className="text-lg font-black leading-none mb-1.5 uppercase">Нужна помощь?</h3><p className="text-[9px] font-black opacity-70 uppercase tracking-widest">СВЯЗАТЬСЯ В TELEGRAM</p></div>
+            <Send size={28} className="opacity-30" />
           </button>
         </div>
       )}
