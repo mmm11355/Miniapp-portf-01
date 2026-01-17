@@ -30,8 +30,9 @@ export interface OrderLog {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
-  tgUsername?: string; // Добавленное поле
+  tgUsername?: string; 
   utmSource: string;
+  agreedToMarketing?: boolean; // Новое поле
 }
 
 export interface Session {

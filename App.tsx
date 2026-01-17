@@ -118,9 +118,9 @@ const App: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   
-  // Новые состояния для чекбоксов
   const [agreedToOferta, setAgreedToOferta] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  const [agreedToMarketing, setAgreedToMarketing] = useState(false); // Новое состояние
 
   useEffect(() => {
     analyticsService.startSession().then(setSessionId);
@@ -160,7 +160,8 @@ const App: React.FC = () => {
                     `<b>👤 Клиент:</b> ${order.name}\n` +
                     `<b>📧 Email:</b> ${order.email}\n` +
                     `<b>📞 Тел:</b> ${order.phone}\n` +
-                    `<b>🔹 Ник в TG:</b> ${tgHandle}\n\n` +
+                    `<b>🔹 Ник в TG:</b> ${tgHandle}\n` +
+                    `<b>📢 Рассылки:</b> ${agreedToMarketing ? 'Да ✅' : 'Нет ❌'}\n\n` +
                     `<b>🔗 UTM:</b> ${new URLSearchParams(window.location.search).get('utm_source') || 'direct'}`;
     
     try {
@@ -198,6 +199,7 @@ const App: React.FC = () => {
           productTitle: checkoutProduct.title, 
           price: checkoutProduct.price,
           customerName, customerEmail, customerPhone,
+          agreedToMarketing, // Отправляем в аналитику
           utmSource: new URLSearchParams(window.location.search).get('utm_source') || 'direct'
         }, sessionId)
       ]);
@@ -209,9 +211,9 @@ const App: React.FC = () => {
       
       setActivePaymentUrl(paymentUrl);
       setCheckoutProduct(null);
-      // Сбрасываем чекбоксы для следующего раза
       setAgreedToOferta(false);
       setAgreedToPrivacy(false);
+      setAgreedToMarketing(false); // Сбрасываем
     } catch (err) {
       console.error("Checkout process error:", err);
     } finally {
@@ -411,6 +413,13 @@ const App: React.FC = () => {
                   <input type="checkbox" required checked={agreedToPrivacy} onChange={e => setAgreedToPrivacy(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                   <span className="text-[12px] text-slate-500 font-medium leading-tight">
                     Ознакомлен с <a href="https://axl.antol.net.ru/politica" target="_blank" className="text-indigo-600 underline decoration-indigo-200">Политикой конфиденциальности</a>
+                  </span>
+                </label>
+                {/* Новый чекбокс рассылок */}
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input type="checkbox" checked={agreedToMarketing} onChange={e => setAgreedToMarketing(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-[12px] text-slate-500 font-medium leading-tight">
+                    Согласен на получение рекламных рассылок
                   </span>
                 </label>
               </div>

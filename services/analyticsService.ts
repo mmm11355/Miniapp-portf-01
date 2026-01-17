@@ -82,10 +82,11 @@ export const analyticsService = {
       name: newOrder.customerName,
       email: newOrder.customerEmail,
       phone: newOrder.customerPhone,
-      tgUsername: tgUsername, // Отправляем ник в таблицу
+      tgUsername: tgUsername,
       product: newOrder.productTitle,
       price: newOrder.price,
       utmSource: newOrder.utmSource,
+      agreedToMarketing: newOrder.agreedToMarketing ? 'Да' : 'Нет', // Отправляем в таблицу
       dateStr: formatNow()
     });
   },
@@ -119,7 +120,7 @@ export const analyticsService = {
       action: 'log',
       type: 'session_start',
       sessionId: sessionId,
-      tgUsername: tgUsername, // Записываем кто зашел
+      tgUsername: tgUsername,
       city: 'Mobile/Web',
       country: 'Active',
       utmSource: utmSource,
