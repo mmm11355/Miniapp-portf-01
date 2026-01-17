@@ -183,10 +183,10 @@ const App: React.FC = () => {
     };
 
     try {
-      // 1. Сначала отправляем в Telegram (это быстрее и критичнее для уведомления)
+      // 1. Сначала отправляем в Telegram
       await sendTelegramNotification(orderData);
 
-      // 2. Логируем в аналитику (Google Script)
+      // 2. Логируем в аналитику
       analyticsService.logOrder({
         productTitle: checkoutProduct.title, 
         price: checkoutProduct.price,
@@ -299,7 +299,7 @@ const App: React.FC = () => {
               </div>
             </div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Ольга Антонова</h1>
-            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.25em] mt-2.5">Решения GetCourse & Prodamus.XL</p>
+            <p className="text-[13px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
           </div>
           
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">

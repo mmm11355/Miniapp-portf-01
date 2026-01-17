@@ -3,7 +3,6 @@ import { Session, OrderLog } from '../types';
 
 const STORAGE_KEY = 'olga_analytics_sessions_v2';
 const ORDERS_KEY = 'olga_analytics_orders_v2';
-// Синхронизировано с App.tsx - это критически важно для работы на новых устройствах
 const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycby3JT65rFs7fB4n7GYph3h6qonOEERRxiyhD11DRD9lT4TkDCin9Q4uF5vcclXPpt46/exec';
 
 const getWebhookUrl = () => {
@@ -27,10 +26,12 @@ const sendToScript = async (payload: any) => {
   if (!webhook) return;
 
   try {
-    // Используем keepalive для надежности на мобильных устройствах
+    // Используем keepalive: true для гарантированной отправки с мобильных
+    // Это позволяет запросу завершиться даже если страница закрыта или переключена
     await fetch(webhook, {
       method: 'POST',
       mode: 'no-cors',
+      keepalive: true,
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload)
     });
@@ -66,7 +67,6 @@ export const analyticsService = {
     orders.push(newOrder);
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
 
-    // Отправляем данные в таблицу
     await sendToScript({
       action: 'log',
       type: 'order',
@@ -87,14 +87,13 @@ export const analyticsService = {
     const params = new URLSearchParams(window.location.search);
     const timestamp = Date.now();
     
-    // Начальные данные (отправляем сразу, не дожидаясь IP)
     const utmSource = params.get('utm_source') || 'direct';
     
     const newSession: Session = {
       id: sessionId,
       startTime: timestamp,
-      city: 'Detecting...',
-      country: 'Detecting...',
+      city: 'Mobile Device',
+      country: 'Detected',
       pathHistory: ['home'],
       duration: 0,
       utmSource: utmSource,
@@ -106,18 +105,18 @@ export const analyticsService = {
     sessions.push(newSession);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
 
-    // Сначала инициируем отправку базовой сессии, чтобы она точно попала в таблицу
+    // Мгновенная отправка начала сессии
     sendToScript({
       action: 'log',
       type: 'session_start',
       sessionId: sessionId,
       city: 'Mobile/Web',
-      country: 'Pending',
+      country: 'Active',
       utmSource: utmSource,
       dateStr: formatNow()
     });
 
-    // Затем пытаемся уточнить геопозицию в фоновом режиме
+    // Фоновое уточнение IP
     try {
       fetch('https://ipapi.co/json/')
         .then(res => res.json())
