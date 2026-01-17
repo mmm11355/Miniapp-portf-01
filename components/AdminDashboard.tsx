@@ -1,6 +1,7 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
-import { RefreshCw, Users, CreditCard, MapPin, ListOrdered } from 'lucide-react';
+import { RefreshCw, Users, CreditCard, MapPin, ListOrdered, CheckCircle, Clock } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -17,6 +18,7 @@ const AdminDashboard: React.FC = () => {
       const data = await res.json();
       if (data.status === 'success') {
         setSessions(data.sessions || []);
+        // Синхронизируем локальные статусы с данными из таблицы
         setOrders(data.orders || []);
       }
     } catch (e) {} finally { setLoading(false); }
@@ -68,15 +70,31 @@ const AdminDashboard: React.FC = () => {
         <div className="flex items-center gap-3 px-2"><ListOrdered size={20} className="text-indigo-600" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-800">Журнал продаж</h3></div>
         <div className="space-y-3">
           {orders.length === 0 ? <p className="text-center text-slate-300 py-10 font-bold uppercase text-[10px]">Заказов пока нет</p> : 
-            orders.slice(0, 8).map((o, i) => (
-              <div key={i} className="bg-white border border-slate-50 p-6 rounded-[2rem] premium-shadow flex justify-between items-center transition-all hover:border-indigo-100">
-                <div className="space-y-1">
-                  <p className="text-sm font-black text-slate-900">{o.productTitle || 'Товар'}</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{o.customerEmail || 'No Email'}</p>
+            orders.slice(0, 10).map((o, i) => (
+              <div key={i} className="bg-white border border-slate-50 p-6 rounded-[2rem] premium-shadow transition-all hover:border-indigo-100">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-black text-slate-900">{o.productTitle || 'Товар'}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{o.customerEmail || 'No Email'}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-black text-indigo-600">{o.price} ₽</div>
+                    <div className="text-[9px] font-bold text-slate-300 uppercase">{new Date(o.timestamp).toLocaleDateString()}</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                   <div className="text-sm font-black text-indigo-600">{o.price} ₽</div>
-                   <div className="text-[9px] font-bold text-slate-300 uppercase">{new Date(o.timestamp).toLocaleDateString()}</div>
+                <div className="flex items-center justify-between pt-3 border-t border-slate-50">
+                  <div className="flex items-center gap-2">
+                    {o.paymentStatus === 'paid' ? (
+                      <div className="flex items-center gap-1.5 text-[9px] font-black text-emerald-500 uppercase tracking-wider">
+                        <CheckCircle size={14} /> Оплачено
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 uppercase tracking-wider">
+                        <Clock size={14} /> В ожидании
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase">{o.customerName}</span>
                 </div>
               </div>
             ))

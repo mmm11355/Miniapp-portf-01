@@ -4,7 +4,7 @@ export interface Product {
   title: string;
   description: string;
   category: string;
-  price: number | string; // Изменено: теперь может быть строкой
+  price: number | string;
   imageUrl: string; 
   mediaType: 'image' | 'video'; 
   features: string[];
@@ -32,7 +32,8 @@ export interface OrderLog {
   customerPhone: string;
   tgUsername?: string; 
   utmSource: string;
-  agreedToMarketing?: boolean; // Новое поле
+  agreedToMarketing?: boolean;
+  paymentStatus: 'pending' | 'paid' | 'failed'; // Статус оплаты
 }
 
 export interface Session {

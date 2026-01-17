@@ -61,14 +61,15 @@ export const analyticsService = {
     } catch (e) { return []; }
   },
 
-  logOrder: async (order: Omit<OrderLog, 'id' | 'timestamp'>, currentSessionId?: string) => {
+  logOrder: async (order: Omit<OrderLog, 'id' | 'timestamp' | 'paymentStatus'>, currentSessionId?: string) => {
     const timestamp = Date.now();
     const tgUsername = getTgUsername();
     const newOrder: OrderLog = {
       ...order,
       id: Math.random().toString(36).substr(2, 9),
       timestamp,
-      tgUsername
+      tgUsername,
+      paymentStatus: 'pending'
     };
 
     const orders = analyticsService.getOrders();
@@ -86,9 +87,30 @@ export const analyticsService = {
       product: newOrder.productTitle,
       price: newOrder.price,
       utmSource: newOrder.utmSource,
-      agreedToMarketing: newOrder.agreedToMarketing ? 'Да' : 'Нет', // Отправляем в таблицу
+      paymentStatus: 'pending',
+      agreedToMarketing: newOrder.agreedToMarketing ? 'Да' : 'Нет',
       dateStr: formatNow()
     });
+    
+    return newOrder;
+  },
+
+  updateOrderStatus: async (orderId: string, status: 'paid' | 'failed') => {
+    const orders = analyticsService.getOrders();
+    const idx = orders.findIndex(o => o.id === orderId);
+    if (idx !== -1) {
+      orders[idx].paymentStatus = status;
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+      
+      await sendToScript({
+        action: 'log',
+        type: 'path_update',
+        sessionId: globalSessionId || 'unknown',
+        path: `payment_${status}`,
+        product: `Статус заказа ${orderId} изменен на ${status}`,
+        dateStr: formatNow()
+      });
+    }
   },
 
   startSession: async (): Promise<string> => {
@@ -127,30 +149,11 @@ export const analyticsService = {
       dateStr: formatNow()
     });
 
-    try {
-      fetch('https://ipapi.co/json/')
-        .then(res => res.json())
-        .then(data => {
-          if (data.city) {
-            sendToScript({
-              action: 'log',
-              type: 'path_update',
-              sessionId: sessionId,
-              path: 'geo_update',
-              product: `Локация: ${data.city}, ${data.country_name}`,
-              dateStr: formatNow()
-            });
-          }
-        })
-        .catch(() => {});
-    } catch (e) {}
-
     return sessionId;
   },
 
   updateSessionPath: async (sessionId: string, path: string) => {
     if (!sessionId) return;
-    
     const sessions = analyticsService.getSessions();
     const index = sessions.findIndex(s => s.id === sessionId);
     if (index !== -1) {
@@ -159,7 +162,6 @@ export const analyticsService = {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
       }
     }
-
     await sendToScript({
       action: 'log',
       type: 'path_update',
@@ -168,15 +170,5 @@ export const analyticsService = {
       product: `Переход: ${path}`,
       dateStr: formatNow()
     });
-  },
-
-  endSession: (sessionId: string) => {
-    const sessions = analyticsService.getSessions();
-    const index = sessions.findIndex(s => s.id === sessionId);
-    if (index !== -1) {
-      sessions[index].endTime = Date.now();
-      sessions[index].duration = Math.floor((sessions[index].endTime! - sessions[index].startTime) / 1000);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-    }
   }
 };
