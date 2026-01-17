@@ -117,6 +117,10 @@ const App: React.FC = () => {
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  
+  // Новые состояния для чекбоксов
+  const [agreedToOferta, setAgreedToOferta] = useState(false);
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
 
   useEffect(() => {
     analyticsService.startSession().then(setSessionId);
@@ -147,7 +151,6 @@ const App: React.FC = () => {
   const sendTelegramNotification = async (order: { product: string, price: string | number, name: string, email: string, phone: string }) => {
     if (!telegramConfig.botToken || !telegramConfig.chatId) return;
     
-    // Получаем ник через SDK
     const tg = (window as any).Telegram?.WebApp;
     const tgHandle = tg?.initDataUnsafe?.user?.username ? `@${tg.initDataUnsafe.user.username}` : 'не задан';
 
@@ -177,7 +180,7 @@ const App: React.FC = () => {
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!checkoutProduct || isSubmitting) return;
+    if (!checkoutProduct || isSubmitting || !agreedToOferta || !agreedToPrivacy) return;
     setIsSubmitting(true);
     
     const orderData = {
@@ -189,7 +192,6 @@ const App: React.FC = () => {
     };
 
     try {
-      // Запускаем Telegram и Аналитику параллельно, чтобы не ждать друг друга
       await Promise.allSettled([
         sendTelegramNotification(orderData),
         analyticsService.logOrder({
@@ -200,7 +202,6 @@ const App: React.FC = () => {
         }, sessionId)
       ]);
 
-      // Переходим к оплате
       setIframeLoaded(false);
       const paymentUrl = checkoutProduct.prodamusId?.startsWith('http') 
         ? checkoutProduct.prodamusId 
@@ -208,6 +209,9 @@ const App: React.FC = () => {
       
       setActivePaymentUrl(paymentUrl);
       setCheckoutProduct(null);
+      // Сбрасываем чекбоксы для следующего раза
+      setAgreedToOferta(false);
+      setAgreedToPrivacy(false);
     } catch (err) {
       console.error("Checkout process error:", err);
     } finally {
@@ -384,7 +388,53 @@ const App: React.FC = () => {
         </div>
       )}
       {view === 'admin' && (isAdminAuthenticated ? <div className="space-y-8 pb-32"><div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 mb-6"><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600 ml-1">Bot Token</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600 ml-1">Chat ID</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-rose-500 ml-1">Webhook URL</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} /></div><button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest">Обновить данные</button></div><AdminDashboard /><button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4">Выйти из панели</button></div> : <div className="py-12 text-center space-y-6"><h2 className="text-xl font-bold tracking-tight uppercase text-slate-900">Вход в панель</h2><input type="password" placeholder="Пароль" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-center text-slate-900 outline-none shadow-sm" value={password} onChange={e => setPassword(e.target.value)} /><button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-widest">Войти</button></div>)}
-      {checkoutProduct && <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12 animate-in fade-in"><div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl"><button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300"><X size={24}/></button><h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Оформление заказа</h2><form onSubmit={handleCheckout} className="space-y-3"><input required placeholder="Ваше имя" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none" value={customerName} onChange={e => setCustomerName(e.target.value)} /><input required type="email" placeholder="Email" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} /><input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /><button type="submit" className="w-full bg-indigo-600 text-white py-5 rounded-xl font-bold uppercase text-[12px] tracking-widest shadow-lg active:scale-95 transition-transform">Оплатить {checkoutProduct.price} ₽</button></form></div></div>}
+      {checkoutProduct && (
+        <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12 animate-in fade-in">
+          <div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl">
+            <button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300"><X size={24}/></button>
+            <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Оформление заказа</h2>
+            <form onSubmit={handleCheckout} className="space-y-4">
+              <div className="space-y-3">
+                <input required placeholder="Ваше имя" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none focus:border-indigo-300" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+                <input required type="email" placeholder="Email" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none focus:border-indigo-300" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
+                <input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none focus:border-indigo-300" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
+              </div>
+              
+              <div className="space-y-3 py-2">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input type="checkbox" required checked={agreedToOferta} onChange={e => setAgreedToOferta(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-[12px] text-slate-500 font-medium leading-tight">
+                    Оформляя заказ вы соглашаетесь с условиями <a href="https://axl.antol.net.ru/shabl/oferta_shab" target="_blank" className="text-indigo-600 underline decoration-indigo-200">Оферты</a>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input type="checkbox" required checked={agreedToPrivacy} onChange={e => setAgreedToPrivacy(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-[12px] text-slate-500 font-medium leading-tight">
+                    Ознакомлен с <a href="https://axl.antol.net.ru/politica" target="_blank" className="text-indigo-600 underline decoration-indigo-200">Политикой конфиденциальности</a>
+                  </span>
+                </label>
+              </div>
+
+              <div className="space-y-3">
+                <button 
+                  type="submit" 
+                  disabled={!agreedToOferta || !agreedToPrivacy}
+                  className={`w-full py-5 rounded-xl font-bold uppercase text-[12px] tracking-widest shadow-lg active:scale-95 transition-all ${
+                    (agreedToOferta && agreedToPrivacy) 
+                    ? 'bg-indigo-600 text-white shadow-indigo-100' 
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                  }`}
+                >
+                  Оплатить {checkoutProduct.price} ₽
+                </button>
+                <p className="text-center text-[11px] font-bold text-indigo-500/60 uppercase tracking-wide">
+                  Доступ к материалам откроется в течении дня
+                </p>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4 animate-in zoom-in duration-200" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" alt="Full view" /></div>}
       {activePaymentUrl && (
         <div className="fixed inset-0 z-[7000] bg-white flex flex-col animate-in fade-in">
