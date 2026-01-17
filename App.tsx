@@ -228,6 +228,8 @@ const App: React.FC = () => {
       let embedUrl = url;
       if (url.includes('rutube.ru')) embedUrl = url.replace('/video/', '/play/embed/');
       else if (url.includes('watch?v=')) embedUrl = url.replace('watch?v=', 'embed/');
+      else if (url.includes('youtu.be/')) embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
+      
       return (
         <div className={`relative w-full aspect-video overflow-hidden shadow-sm bg-black ${isDetail ? 'rounded-2xl' : 'rounded-lg'}`}>
           <iframe src={embedUrl} className="w-full h-full border-none" allowFullScreen></iframe>
@@ -242,6 +244,28 @@ const App: React.FC = () => {
       );
     }
     return <img src={url} className={isDetail ? 'w-full h-auto rounded-2xl' : className} alt="" onClick={onClick} />;
+  };
+
+  const renderRichText = (text: string) => {
+    if (!text) return null;
+    const parts = text.split(/(\[\[(?:video|image):.*?\]\])/g);
+    return parts.map((part, index) => {
+      const match = part.match(/\[\[(video|image):(.*?)\]\]/);
+      if (match) {
+        const [, type, url] = match;
+        return (
+          <div key={index} className="my-6">
+            <MediaRenderer 
+              url={url.trim()} 
+              type={type as 'video' | 'image'} 
+              isDetail={true} 
+              onClick={() => type === 'image' && setFullscreenImage(url.trim())} 
+            />
+          </div>
+        );
+      }
+      return <span key={index} className="whitespace-pre-wrap">{part}</span>;
+    });
   };
 
   return (
@@ -260,7 +284,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4"><Award className="text-indigo-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
             <div className="flex items-center gap-4"><BriefcaseIcon className="text-emerald-500" size={18} /><p className="text-[13px] font-bold text-slate-700">60+ реализованных проектов</p></div>
           </div>
-          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between">
+          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between transition-all active:scale-[0.98]">
             <div className="text-left"><h3 className="text-lg font-black uppercase">Нужна помощь?</h3><p className="text-[9px] font-black opacity-70 uppercase tracking-widest">СВЯЗАТЬСЯ В TELEGRAM</p></div>
             <Send size={28} className="opacity-30" />
           </button>
@@ -271,7 +295,7 @@ const App: React.FC = () => {
           {view === 'shop' && (
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
               {['All', ...categories].map(c => (
-                <button key={c} onClick={() => setFilter(c)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase transition-all flex-shrink-0 ${filter === c ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600' }`}>
+                <button key={c} onClick={() => setFilter(c)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase transition-all flex-shrink-0 ${filter === c ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-200 text-slate-600' }`}>
                   {c === 'All' ? 'Все' : c}
                 </button>
               ))}
@@ -279,7 +303,7 @@ const App: React.FC = () => {
           )}
           <div className="grid grid-cols-1 gap-1">
             {(view === 'portfolio' ? portfolioItems : view === 'bonuses' ? bonuses : filteredProducts).map(p => (
-              <div key={p.id} style={{ backgroundColor: p.cardBgColor }} className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col mb-5 p-4">
+              <div key={p.id} style={{ backgroundColor: p.cardBgColor }} className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col mb-5 p-4 transition-all">
                 <div className="flex justify-between items-center mb-2">
                   <span style={{ color: p.buttonColor }} className="text-[10px] font-black uppercase tracking-widest opacity-60">{p.category}</span>
                   <Sparkles size={14} style={{ color: p.buttonColor }} className="opacity-30" />
@@ -289,7 +313,7 @@ const App: React.FC = () => {
                 <div className="aspect-video relative bg-slate-50 rounded-xl overflow-hidden mb-4">
                   <MediaRenderer url={p.imageUrl} type={p.mediaType} className="w-full h-full object-cover" onClick={() => p.useDetailModal && setActiveDetailProduct(p)} />
                 </div>
-                <button onClick={() => p.useDetailModal ? setActiveDetailProduct(p) : (p.section === 'shop' ? setCheckoutProduct(p) : window.open(p.externalLink, '_blank'))} style={{ backgroundColor: p.buttonColor }} className="w-full py-4 rounded-xl text-white font-bold text-[12px] uppercase tracking-wider flex items-center justify-center gap-2">
+                <button onClick={() => p.useDetailModal ? setActiveDetailProduct(p) : (p.section === 'shop' ? setCheckoutProduct(p) : window.open(p.externalLink, '_blank'))} style={{ backgroundColor: p.buttonColor }} className="w-full py-4 rounded-xl text-white font-bold text-[12px] uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98]">
                   {p.buttonText || 'Выбрать'} <ChevronRight size={16} />
                 </button>
               </div>
@@ -297,62 +321,118 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+      
+      {/* ИСПРАВЛЕННЫЙ ЛОНГРИД: ТЕПЕРЬ НЕ ПЕРЕКРЫВАЕТ МЕНЮ */}
       {activeDetailProduct && (
-        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom">
-          <div className="p-4 flex items-center justify-between border-b bg-white/95">
+        <div className="fixed inset-x-0 top-0 bottom-20 z-[85] bg-white flex flex-col animate-in slide-in-from-bottom border-b border-slate-50">
+          <div className="p-4 flex items-center justify-between border-b bg-white/95 sticky top-0 z-[10]">
             <button onClick={() => setActiveDetailProduct(null)} className="p-2 bg-slate-50 rounded-xl"><ChevronLeft size={20}/></button>
-            <span className="font-bold text-[11px] text-slate-400 uppercase truncate px-4">{activeDetailProduct.title}</span>
+            <span className="font-bold text-[11px] text-slate-400 uppercase truncate px-4 tracking-widest">{activeDetailProduct.title}</span>
             <button onClick={() => setActiveDetailProduct(null)} className="p-2 bg-slate-50 rounded-xl"><X size={20}/></button>
           </div>
-          <div className="flex-grow overflow-y-auto p-6 space-y-6 pb-32">
-            <h2 className="text-2xl font-bold text-slate-900 uppercase leading-tight">{activeDetailProduct.title}</h2>
-            <div className="space-y-4">
-              {(activeDetailProduct.detailGallery?.length ? activeDetailProduct.detailGallery : [{url: activeDetailProduct.imageUrl, type: activeDetailProduct.mediaType}]).map((m:any, i:number) => (
-                <MediaRenderer key={i} url={m.url} type={m.type} isDetail={true} onClick={() => m.type === 'image' && setFullscreenImage(m.url)} />
-              ))}
+          <div className="flex-grow overflow-y-auto p-6 space-y-6 pb-24">
+            <h2 className="text-2xl font-black text-slate-900 uppercase leading-tight tracking-tight">{activeDetailProduct.title}</h2>
+            
+            {activeDetailProduct.detailGallery && activeDetailProduct.detailGallery.length > 0 ? (
+              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+                {activeDetailProduct.detailGallery.map((m:any, i:number) => (
+                  <div key={i} className="flex-shrink-0 w-[85%] aspect-video">
+                    <MediaRenderer url={m.url} type={m.type} isDetail={true} onClick={() => m.type === 'image' && setFullscreenImage(m.url)} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <MediaRenderer url={activeDetailProduct.imageUrl} type={activeDetailProduct.mediaType} isDetail={true} onClick={() => activeDetailProduct.mediaType === 'image' && setFullscreenImage(activeDetailProduct.imageUrl)} />
+            )}
+
+            <div className="text-slate-700 font-medium leading-relaxed text-[15px]">
+              {renderRichText(activeDetailProduct.detailFullDescription || activeDetailProduct.description)}
             </div>
-            <div className="text-slate-600 font-medium whitespace-pre-wrap leading-relaxed">{activeDetailProduct.detailFullDescription || activeDetailProduct.description}</div>
           </div>
-          <div className="fixed bottom-10 left-6 right-6">
-            <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor }} className="w-full py-5 rounded-2xl text-white font-black uppercase text-[12px] shadow-2xl flex items-center justify-center gap-3">
-              {activeDetailProduct.detailButtonText || 'ОФОРМИТЬ'} <ChevronRight size={18} />
+          
+          {/* КНОПКА ПОДНЯТА НАД МЕНЮ */}
+          <div className="absolute bottom-6 left-6 right-6 z-[20]">
+            <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor }} className="w-full py-5 rounded-2xl text-white font-black uppercase text-[12px] shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95">
+              {activeDetailProduct.detailButtonText || 'ЗАКАЗАТЬ'} <ChevronRight size={18} />
             </button>
           </div>
         </div>
       )}
+
       {view === 'admin' && (isAdminAuthenticated ? (
-        <div className="space-y-8 pb-32">
-          {/* Блок настроек: Возвращен и закреплен */}
+        <div className="space-y-8 pb-32 animate-in fade-in duration-300">
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 mb-6">
             <div className="space-y-1">
               <label className="text-[9px] font-black uppercase text-indigo-600">Bot Token</label>
-              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} />
+              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none focus:ring-2 focus:ring-indigo-100 transition-all" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-black uppercase text-indigo-600">Chat ID</label>
-              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} />
+              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none focus:ring-2 focus:ring-indigo-100 transition-all" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-black uppercase text-rose-500">Webhook URL</label>
-              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} />
+              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none focus:ring-2 focus:ring-rose-100 transition-all" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} />
             </div>
-            <button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest">Обновить настройки</button>
+            <button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest shadow-lg shadow-indigo-100 transition-all active:scale-95">Обновить настройки</button>
           </div>
-          
           <AdminDashboard />
-          
-          <button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4">Выйти</button>
+          <button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4 tracking-widest">Выйти из панели</button>
         </div>
       ) : (
         <div className="py-20 text-center space-y-6">
-          <h2 className="text-xl font-bold uppercase">Админ-панель</h2>
-          <input type="password" placeholder="Пароль" className="w-full p-5 bg-white border rounded-2xl text-center" value={password} onChange={e => setPassword(e.target.value)} />
-          <button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold uppercase">Войти</button>
+          <h2 className="text-xl font-black uppercase tracking-tight">Вход в систему</h2>
+          <input type="password" placeholder="Пароль" className="w-full p-5 bg-white border border-slate-200 rounded-2xl text-center font-bold text-lg outline-none focus:ring-4 focus:ring-indigo-50" value={password} onChange={e => setPassword(e.target.value)} />
+          <button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95">Авторизоваться</button>
         </div>
       ))}
-      {checkoutProduct && <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12"><div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl"><button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300"><X size={24}/></button><h2 className="text-lg font-bold uppercase">Заказ: {checkoutProduct.title}</h2><form onSubmit={handleCheckout} className="space-y-4"><input required placeholder="Ваше имя" className="w-full bg-slate-50 border p-4 rounded-xl" value={customerName} onChange={e => setCustomerName(e.target.value)} /><input required type="email" placeholder="Email" className="w-full bg-slate-50 border p-4 rounded-xl" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} /><input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border p-4 rounded-xl" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /><div className="space-y-2 py-2"><label className="flex items-start gap-3 text-[11px] text-slate-500"><input type="checkbox" required /> Принимаю условия оферты</label><label className="flex items-start gap-3 text-[11px] text-slate-500"><input type="checkbox" required /> Согласен с политикой конфиденциальности</label></div><button type="submit" className="w-full py-5 rounded-xl font-bold uppercase bg-indigo-600 text-white">Оплатить {checkoutProduct.price} ₽</button></form></div></div>}
-      {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg" alt="" /></div>}
-      {activePaymentUrl && <div className="fixed inset-0 z-[7000] bg-white flex flex-col"><div className="p-4 border-b flex justify-between items-center"><span className="font-bold text-[11px] uppercase text-slate-400">Оплата</span><button onClick={() => { setActivePaymentUrl(null); setIframeLoaded(false); }} className="p-2 bg-rose-500 text-white rounded-xl"><X size={20}/></button></div><div className="flex-grow relative bg-slate-50">{!iframeLoaded && <div className="absolute inset-0 flex flex-col items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>}<iframe src={activePaymentUrl} className={`w-full h-full border-none ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`} onLoad={() => setIframeLoaded(true)} /></div></div>}
+      
+      {checkoutProduct && (
+        <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12">
+          <div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl animate-in fade-in zoom-in duration-200">
+            <button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300 hover:text-rose-500 transition-colors">
+              <X size={24}/>
+            </button>
+            <div className="space-y-1">
+              <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Оформление заказа</h2>
+              <p className="text-xl font-black text-slate-900 leading-tight tracking-tight">{checkoutProduct.title}</p>
+            </div>
+            <form onSubmit={handleCheckout} className="space-y-4">
+              <input required placeholder="Ваше имя" className="w-full bg-slate-50 border border-slate-100 p-4 rounded-xl outline-none focus:border-indigo-300 transition-all font-bold text-[15px]" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+              <input required type="email" placeholder="Email" className="w-full bg-slate-50 border border-slate-100 p-4 rounded-xl outline-none focus:border-indigo-300 transition-all font-bold text-[15px]" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
+              <input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border border-slate-100 p-4 rounded-xl outline-none focus:border-indigo-300 transition-all font-bold text-[15px]" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
+              
+              <div className="space-y-3 py-2">
+                <label className="flex items-start gap-3 text-[11px] text-slate-500 font-bold leading-snug cursor-pointer group">
+                  <input type="checkbox" required className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" checked={agreedToOferta} onChange={e => setAgreedToOferta(e.target.checked)} /> 
+                  <span className="group-hover:text-slate-700 transition-colors">Принимаю условия <a href="https://axl.antol.net.ru/shabl/oferta_shab" target="_blank" className="text-indigo-600 font-black underline">публичной оферты</a></span>
+                </label>
+                <label className="flex items-start gap-3 text-[11px] text-slate-500 font-bold leading-snug cursor-pointer group">
+                  <input type="checkbox" required className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" checked={agreedToPrivacy} onChange={e => setAgreedToPrivacy(e.target.checked)} /> 
+                  <span className="group-hover:text-slate-700 transition-colors">Согласен с <a href="https://axl.antol.net.ru/politica" target="_blank" className="text-indigo-600 font-black underline">политикой конфиденциальности</a></span>
+                </label>
+                <label className="flex items-start gap-3 text-[11px] text-slate-500 font-bold leading-snug cursor-pointer group">
+                  <input type="checkbox" className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" checked={agreedToMarketing} onChange={e => setAgreedToMarketing(e.target.checked)} /> 
+                  <span className="group-hover:text-slate-700 transition-colors">Согласен на получение рассылок</span>
+                </label>
+              </div>
+
+              <div className="space-y-3">
+                <button type="submit" disabled={!agreedToOferta || !agreedToPrivacy} className={`w-full py-5 rounded-2xl font-black uppercase text-[12px] tracking-widest shadow-xl transition-all active:scale-95 ${(!agreedToOferta || !agreedToPrivacy) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white shadow-indigo-100 hover:shadow-indigo-200'}`}>
+                  ОПЛАТИТЬ {checkoutProduct.price} ₽
+                </button>
+                <p className="text-[10px] text-center text-slate-500 font-black uppercase leading-tight tracking-tight mt-4">
+                  В течение дня доступ к материалам <br/> будет отправлен на вашу эл. почту
+                </p>
+                <p className="text-[8px] text-center text-slate-300 uppercase font-bold tracking-widest mt-1">Safe payment via Prodamus</p>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" alt="" /></div>}
+      {activePaymentUrl && <div className="fixed inset-0 z-[7000] bg-white flex flex-col"><div className="p-4 border-b flex justify-between items-center"><span className="font-bold text-[11px] uppercase text-slate-400 tracking-widest">Процессинг оплаты</span><button onClick={() => { setActivePaymentUrl(null); setIframeLoaded(false); }} className="p-2 bg-rose-500 text-white rounded-xl shadow-lg active:scale-90 transition-all"><X size={20}/></button></div><div className="flex-grow relative bg-slate-50">{!iframeLoaded && <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 backdrop-blur-sm"><div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div><p className="mt-4 text-[10px] font-black uppercase text-indigo-600 tracking-widest">Безопасное соединение...</p></div>}<iframe src={activePaymentUrl} className={`w-full h-full border-none transition-opacity duration-500 ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`} onLoad={() => setIframeLoaded(true)} /></div></div>}
     </Layout>
   );
 };
