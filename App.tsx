@@ -43,10 +43,14 @@ const App: React.FC = () => {
   const parseSafeDate = (dateVal: any): number => {
     if (!dateVal) return 0;
     if (typeof dateVal === 'number') return dateVal;
-    // Если это строка типа 16.01.2026
-    if (typeof dateVal === 'string' && dateVal.includes('.')) {
-      const [d, m, y] = dateVal.split('.').map(Number);
-      return new Date(y, m - 1, d).getTime();
+    if (typeof dateVal === 'string') {
+      const clean = dateVal.split(',')[0].trim();
+      if (clean.includes('.')) {
+        const [d, m, y] = clean.split('.').map(Number);
+        if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+          return new Date(y, m - 1, d).getTime();
+        }
+      }
     }
     const parsed = Date.parse(dateVal);
     return isNaN(parsed) ? 0 : parsed;
@@ -60,13 +64,7 @@ const App: React.FC = () => {
       try {
         const localOrders = analyticsService.getOrders();
         const now = Date.now();
-        
-        const safeParse = (key: string) => {
-          try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) { return []; }
-        };
-
-        const processedNotifies = safeParse('olga_processed_notifies');
-        const processedCancelled = safeParse('olga_processed_cancelled');
+        const processedCancelled = JSON.parse(localStorage.getItem('olga_processed_cancelled') || '[]').map(String);
         
         let cloudOrders: any[] = [];
         if (telegramConfig.googleSheetWebhook) {
@@ -74,59 +72,52 @@ const App: React.FC = () => {
             const res = await fetch(`${telegramConfig.googleSheetWebhook}?action=getStats&_t=${Date.now()}`, { cache: 'no-store' });
             const data = await res.json();
             if (data.status === 'success') cloudOrders = data.orders || [];
-          } catch (e) { console.warn("Monitoring: Cloud Fetch Fail", e); }
+          } catch (e) {}
         }
 
         const sanitize = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        // Объединяем заказы для проверки
         const allOrdersToCheck = [...localOrders];
         cloudOrders.forEach(co => {
-          if (!allOrdersToCheck.find(lo => lo.id === co.id)) {
-            allOrdersToCheck.push(co);
-          }
+          if (!allOrdersToCheck.find(lo => String(lo.id) === String(co.id))) allOrdersToCheck.push(co);
         });
 
         for (const order of allOrdersToCheck) {
-          const cloudInfo = cloudOrders.find((co: any) => co.id === order.id);
-          const currentStatus = cloudInfo?.paymentStatus || order.paymentStatus;
-          const isPaid = currentStatus === 'paid' || currentStatus === 'Оплачено';
-          const isFailed = currentStatus === 'failed' || currentStatus === 'Отменено';
+          const orderIdStr = String(order.id);
+          const cloudInfo = cloudOrders.find((co: any) => String(co.id) === orderIdStr);
+          const currentStatus = (cloudInfo?.paymentStatus || order.paymentStatus || '').toLowerCase();
+          
+          const isPaid = currentStatus.includes('оплачено') || currentStatus === 'paid';
+          const isFailed = currentStatus.includes('отменен') || currentStatus.includes('архив') || currentStatus === 'failed';
+          const isPending = currentStatus.includes('ожидание') || currentStatus === 'pending';
           
           const orderTime = parseSafeDate(cloudInfo?.timestamp || order.timestamp);
           
-          if (orderTime === 0) continue;
+          if (orderTime > 0 && isPending && !isPaid && !isFailed && (now - orderTime) > 10 * 60 * 1000) {
+            if (!processedCancelled.includes(orderIdStr)) {
+              await analyticsService.updateOrderStatus(orderIdStr, 'failed');
+              processedCancelled.push(orderIdStr);
+              localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
 
-          // Если прошло больше 10 минут и статус всё ещё "ожидание"
-          if (!isPaid && !isFailed && currentStatus.toLowerCase().includes('ожидание') && (now - orderTime) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
-            // МГНОВЕННОЕ ДЕЙСТВИЕ
-            await analyticsService.updateOrderStatus(order.id, 'failed');
-            processedCancelled.push(order.id);
-            localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
-
-            if (telegramConfig.botToken && telegramConfig.chatId) {
-              const cancelMsg = `<b>🔴 АВТО-АРХИВ (10 МИН+)</b>\n\n` +
-                                `<b>ID:</b> <code>${order.id}</code>\n` +
-                                `<b>Товар:</b> ${sanitize(order.productTitle)}\n` +
-                                `<b>Дата:</b> ${new Date(orderTime).toLocaleDateString()}\n\n` +
-                                `<i>Статус изменен на "Отменено".</i>`;
-              fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: telegramConfig.chatId, text: cancelMsg, parse_mode: 'HTML' })
-              }).catch(e => {});
+              if (telegramConfig.botToken && telegramConfig.chatId) {
+                const cancelMsg = `<b>🔴 АВТО-АРХИВАЦИЯ (10 МИН+)</b>\n\n<b>ID:</b> <code>${orderIdStr}</code>\n<b>Товар:</b> ${sanitize(order.productTitle)}`;
+                fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ chat_id: telegramConfig.chatId, text: cancelMsg, parse_mode: 'HTML' })
+                }).catch(() => {});
+              }
             }
           }
         }
-      } catch (globalError) {
+      } catch (e) {
       } finally {
         isProcessingRef.current = false;
       }
     };
 
     monitorOrders();
-    const checkInterval = setInterval(monitorOrders, 30000); // Проверка каждые 30 сек
-    return () => clearInterval(checkInterval);
+    const interval = setInterval(monitorOrders, 30000);
+    return () => clearInterval(interval);
   }, [telegramConfig]);
 
   const syncWithCloud = useCallback(async (showLoading = false) => {
@@ -143,9 +134,6 @@ const App: React.FC = () => {
             Object.keys(item).forEach(key => { p[key.trim().toLowerCase()] = item[key]; });
             let gallery = [];
             try { gallery = typeof (p.detailgallery || p.detailGallery) === 'string' ? JSON.parse(p.detailgallery || p.detailGallery) : (p.detailgallery || p.detailGallery || []); } catch (e) {}
-            
-            const dBtnText = p.detailbuttontext || p.detailbutton || p.кнопкалонгрида || p.detailButtonText || p.buttontext || p.buttonText || '';
-
             return {
               ...p,
               id: p.id ? String(p.id) : `row-${index + 2}`,
@@ -164,7 +152,7 @@ const App: React.FC = () => {
               prodamusId: p.prodamusid || p.prodamusId || '',
               externalLink: p.externallink || p.externalLink || '',
               detailFullDescription: p.detailfulldescription || p.detailFullDescription || '',
-              detailButtonText: dBtnText, 
+              detailButtonText: p.detailbuttontext || p.detailbutton || p.кнопкалонгрида || p.detailButtonText || p.buttontext || p.buttonText || '', 
               detailGallery: gallery
             };
           });
@@ -236,129 +224,43 @@ const App: React.FC = () => {
 
   const MediaRenderer: React.FC<{ url: string; type: 'image' | 'video'; className?: string; onClick?: () => void; isDetail?: boolean }> = ({ url, type, className, onClick, isDetail }) => {
     if (!url) return null;
-    const isDirectVideo = url.match(/\.(mp4|webm|mov|gif|m4v|avi)$/i);
-    const isRutube = url.includes('rutube.ru');
-    const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
-    if (isRutube || isYoutube) {
+    if (url.includes('rutube.ru') || url.includes('youtube.com') || url.includes('youtu.be')) {
       let embedUrl = url;
-      if (isRutube) {
-        if (url.includes('/video/')) embedUrl = url.replace('/video/', '/play/embed/');
-        else if (!url.includes('/play/embed/')) {
-          const id = url.split('/').filter(Boolean).pop();
-          embedUrl = `https://rutube.ru/play/embed/${id}/`;
-        }
-      } else if (isYoutube) {
-        if (url.includes('watch?v=')) embedUrl = url.replace('watch?v=', 'embed/');
-        else if (url.includes('youtu.be/')) embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
-      }
+      if (url.includes('rutube.ru')) embedUrl = url.replace('/video/', '/play/embed/');
+      else if (url.includes('watch?v=')) embedUrl = url.replace('watch?v=', 'embed/');
       return (
         <div className={`relative w-full aspect-video overflow-hidden shadow-sm bg-black ${isDetail ? 'rounded-2xl' : 'rounded-lg'}`}>
-          <iframe src={embedUrl} className="w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen></iframe>
+          <iframe src={embedUrl} className="w-full h-full border-none" allowFullScreen></iframe>
         </div>
       );
     }
-    if (type === 'video' || isDirectVideo) {
+    if (type === 'video' || url.match(/\.(mp4|webm|mov)$/i)) {
       return (
-        <div className={`relative w-full overflow-hidden ${isDetail ? 'rounded-2xl bg-black shadow-sm' : 'h-full'}`} onClick={onClick}>
-          <video src={url} className={isDetail ? 'w-full h-auto max-h-[65vh] mx-auto' : className} autoPlay muted loop playsInline preload="auto" style={{ objectFit: isDetail ? 'contain' : 'cover' }} />
-          {!isDetail && <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none"><PlayCircle size={36} className="text-white opacity-40" /></div>}
+        <div className={`relative w-full overflow-hidden ${isDetail ? 'rounded-2xl bg-black' : 'h-full'}`} onClick={onClick}>
+          <video src={url} className={isDetail ? 'w-full h-auto' : className} autoPlay muted loop playsInline />
         </div>
       );
     }
-    return <img src={url} className={`${isDetail ? 'w-full h-auto rounded-2xl shadow-sm mx-auto' : className}`} alt="" onClick={onClick} style={{ objectFit: isDetail ? 'contain' : 'cover', cursor: isDetail ? 'zoom-in' : 'pointer' }} />;
+    return <img src={url} className={isDetail ? 'w-full h-auto rounded-2xl' : className} alt="" onClick={onClick} />;
   };
-
-  const renderRichContent = (text: string) => {
-    if (!text) return null;
-    const parts = text.split(/(\[\[(?:image|video):[^\]]+\]\])/g);
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-
-    return (
-      <div className="text-[16px] font-medium text-slate-600 leading-[1.4] whitespace-pre-wrap">
-        {parts.map((part, i) => {
-          const mediaMatch = part.match(/\[\[(image|video):([^\]]+)\]\]/);
-          if (mediaMatch) {
-            const [_, type, url] = mediaMatch;
-            const mediaUrl = url.trim();
-            return (
-              <div key={i} className="my-6 block">
-                <MediaRenderer 
-                  url={mediaUrl} 
-                  type={type as 'image' | 'video'} 
-                  isDetail={true} 
-                  onClick={() => type === 'image' && setFullscreenImage(mediaUrl)} 
-                />
-              </div>
-            );
-          }
-          return (
-            <React.Fragment key={i}>
-              {part.split(urlRegex).map((subPart, j) => {
-                if (subPart.match(urlRegex)) {
-                  return (
-                    <a key={j} href={subPart} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 break-all font-bold">
-                      {subPart}
-                    </a>
-                  );
-                }
-                return subPart;
-              })}
-            </React.Fragment>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderProductCard = (p: Product) => (
-    <div key={p.id} style={{ backgroundColor: p.cardBgColor }} className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col active:scale-[0.99] transition-all mb-5">
-      <div className="p-4 pb-0 flex justify-between items-center">
-         <span style={{ color: p.buttonColor }} className="text-[10px] font-black uppercase tracking-[0.15em] opacity-60">{p.category}</span>
-         <span className="opacity-30"><Sparkles size={14} style={{ color: p.buttonColor }} /></span>
-      </div>
-      <div className="p-4 pt-2">
-        <h3 style={{ color: p.titleColor }} className="text-[17px] font-bold tracking-tight leading-tight">{p.title}</h3>
-        <div style={{ color: p.buttonColor }} className="text-[15px] font-black mt-1">
-           {typeof p.price === 'number' && p.price > 0 ? `${p.price} ₽` : (p.price === 0 || p.price === "0" ? '0 ₽' : p.price)}
-        </div>
-      </div>
-      <div className="aspect-[16/9] relative bg-slate-50 mx-4 rounded-xl overflow-hidden mb-3 border border-slate-50">
-        <MediaRenderer url={p.imageUrl} type={p.mediaType} className="w-full h-full" onClick={() => { if (p.useDetailModal) setActiveDetailProduct(p); }} />
-      </div>
-      <div className="px-4 pb-4 space-y-3">
-        <div className="text-[16px] text-slate-500 font-medium leading-[1.4] line-clamp-3">
-          {renderRichContent(p.description)}
-        </div>
-        <button 
-          onClick={() => { if (p.useDetailModal) setActiveDetailProduct(p); else if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }}
-          style={{ backgroundColor: p.buttonColor || '#6366f1' }}
-          className="w-full flex items-center justify-center gap-2 text-white py-4 rounded-xl font-bold text-[12px] uppercase tracking-wider shadow-md active:scale-95 transition-transform"
-        >
-          {p.buttonText || (p.section === 'shop' ? 'Купить' : 'Забрать')} <ChevronRight size={16} />
-        </button>
-      </div>
-    </div>
-  );
 
   return (
     <Layout activeView={view} onNavigate={handleNavigate}>
       {view === 'home' && (
-        <div className="space-y-5 animate-in fade-in duration-500">
-          <div className="text-center py-4">
-            <div className="w-40 h-40 mx-auto relative mb-4">
-              <div className="relative w-full h-full bg-white rounded-[2.5rem] p-1.5 shadow-2xl overflow-hidden border-4 border-white">
-                <img src="https://i.imgur.com/bQ8ic2w.png" alt="Ольга" className="w-full h-full object-cover rounded-[2.2rem]" />
-              </div>
+        <div className="space-y-5 animate-in fade-in duration-500 text-center">
+          <div className="w-40 h-40 mx-auto relative mb-4">
+            <div className="relative w-full h-full bg-white rounded-[2.5rem] p-1.5 shadow-2xl overflow-hidden border-4 border-white">
+              <img src="https://i.imgur.com/bQ8ic2w.png" alt="Ольга" className="w-full h-full object-cover rounded-[2.2rem]" />
             </div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Ольга Антонова</h1>
-            <p className="text-[16px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
           </div>
-          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Ольга Антонова</h1>
+          <p className="text-[16px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4 text-left">
             <div className="flex items-center gap-4"><Trophy className="text-amber-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Победитель Хакатона EdMarket</p></div>
             <div className="flex items-center gap-4"><Award className="text-indigo-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
             <div className="flex items-center gap-4"><BriefcaseIcon className="text-emerald-500" size={18} /><p className="text-[13px] font-bold text-slate-700">60+ реализованных проектов</p></div>
           </div>
-          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between active:scale-[0.98] transition-all">
+          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between">
             <div className="text-left"><h3 className="text-lg font-black uppercase">Нужна помощь?</h3><p className="text-[9px] font-black opacity-70 uppercase tracking-widest">СВЯЗАТЬСЯ В TELEGRAM</p></div>
             <Send size={28} className="opacity-30" />
           </button>
@@ -369,83 +271,88 @@ const App: React.FC = () => {
           {view === 'shop' && (
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
               {['All', ...categories].map(c => (
-                <button key={c} onClick={() => setFilter(c)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 ${filter === c ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-200 text-slate-600' }`}>
+                <button key={c} onClick={() => setFilter(c)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase transition-all flex-shrink-0 ${filter === c ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600' }`}>
                   {c === 'All' ? 'Все' : c}
                 </button>
               ))}
             </div>
           )}
-          <div className="grid grid-cols-1 gap-1">{(view === 'portfolio' ? portfolioItems : view === 'bonuses' ? bonuses : filteredProducts).map(renderProductCard)}</div>
-        </div>
-      )}
-      {view === 'contact' && (
-        <div className="text-center py-20 space-y-6">
-          <div className="w-20 h-20 bg-indigo-600 rounded-[1.8rem] flex items-center justify-center text-white mx-auto"><Send size={32} /></div>
-          <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-900">Связь со мной</h2>
-          <a href="https://t.me/Olga_lav" target="_blank" className="w-full max-w-[280px] mx-auto flex items-center justify-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-xl">Открыть Telegram</a>
+          <div className="grid grid-cols-1 gap-1">
+            {(view === 'portfolio' ? portfolioItems : view === 'bonuses' ? bonuses : filteredProducts).map(p => (
+              <div key={p.id} style={{ backgroundColor: p.cardBgColor }} className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col mb-5 p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span style={{ color: p.buttonColor }} className="text-[10px] font-black uppercase tracking-widest opacity-60">{p.category}</span>
+                  <Sparkles size={14} style={{ color: p.buttonColor }} className="opacity-30" />
+                </div>
+                <h3 style={{ color: p.titleColor }} className="text-[17px] font-bold leading-tight mb-1">{p.title}</h3>
+                <div style={{ color: p.buttonColor }} className="text-[15px] font-black mb-3">{p.price} ₽</div>
+                <div className="aspect-video relative bg-slate-50 rounded-xl overflow-hidden mb-4">
+                  <MediaRenderer url={p.imageUrl} type={p.mediaType} className="w-full h-full object-cover" onClick={() => p.useDetailModal && setActiveDetailProduct(p)} />
+                </div>
+                <button onClick={() => p.useDetailModal ? setActiveDetailProduct(p) : (p.section === 'shop' ? setCheckoutProduct(p) : window.open(p.externalLink, '_blank'))} style={{ backgroundColor: p.buttonColor }} className="w-full py-4 rounded-xl text-white font-bold text-[12px] uppercase tracking-wider flex items-center justify-center gap-2">
+                  {p.buttonText || 'Выбрать'} <ChevronRight size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {activeDetailProduct && (
-        <div className="fixed top-0 left-0 right-0 bottom-20 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom duration-300">
-          <div className="p-4 flex items-center justify-between border-b shrink-0 bg-white/95 backdrop-blur-md">
-            <button onClick={() => setActiveDetailProduct(null)} className="p-2.5 bg-slate-50 rounded-xl text-slate-400"><ChevronLeft size={20} /></button>
-            <span className="font-bold text-[12px] text-slate-300 uppercase truncate max-w-[60%]">{activeDetailProduct.title}</span>
-            <button onClick={() => setActiveDetailProduct(null)} className="p-2.5 bg-slate-50 rounded-xl text-slate-400"><X size={20} /></button>
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom">
+          <div className="p-4 flex items-center justify-between border-b bg-white/95">
+            <button onClick={() => setActiveDetailProduct(null)} className="p-2 bg-slate-50 rounded-xl"><ChevronLeft size={20}/></button>
+            <span className="font-bold text-[11px] text-slate-400 uppercase truncate px-4">{activeDetailProduct.title}</span>
+            <button onClick={() => setActiveDetailProduct(null)} className="p-2 bg-slate-50 rounded-xl"><X size={20}/></button>
           </div>
-          <div className="flex-grow overflow-y-auto p-6 space-y-6 no-scrollbar pb-40">
-            <div className="space-y-3">
-              <h2 className="text-2xl font-bold text-slate-900 uppercase leading-tight">{activeDetailProduct.title}</h2>
-              <div style={{ color: activeDetailProduct.buttonColor }} className="text-lg font-black bg-slate-50 w-fit px-4 py-2 rounded-full">
-                {typeof activeDetailProduct.price === 'number' && activeDetailProduct.price > 0 ? `${activeDetailProduct.price} ₽` : activeDetailProduct.price}
-              </div>
+          <div className="flex-grow overflow-y-auto p-6 space-y-6 pb-32">
+            <h2 className="text-2xl font-bold text-slate-900 uppercase leading-tight">{activeDetailProduct.title}</h2>
+            <div className="space-y-4">
+              {(activeDetailProduct.detailGallery?.length ? activeDetailProduct.detailGallery : [{url: activeDetailProduct.imageUrl, type: activeDetailProduct.mediaType}]).map((m:any, i:number) => (
+                <MediaRenderer key={i} url={m.url} type={m.type} isDetail={true} onClick={() => m.type === 'image' && setFullscreenImage(m.url)} />
+              ))}
             </div>
-            <div className="space-y-5">
-              {activeDetailProduct.detailGallery?.length ? activeDetailProduct.detailGallery.map((media, idx) => (
-                <MediaRenderer key={idx} url={media.url} type={media.type} isDetail={true} onClick={() => media.type === 'image' && setFullscreenImage(media.url)} />
-              )) : (
-                <MediaRenderer url={activeDetailProduct.imageUrl} type={activeDetailProduct.mediaType} isDetail={true} onClick={() => activeDetailProduct.mediaType === 'image' && setFullscreenImage(activeDetailProduct.imageUrl)} />
-              )}
-            </div>
-            <div className="pt-4 border-t border-slate-50">
-               {renderRichContent(activeDetailProduct.detailFullDescription || activeDetailProduct.description)}
-            </div>
+            <div className="text-slate-600 font-medium whitespace-pre-wrap leading-relaxed">{activeDetailProduct.detailFullDescription || activeDetailProduct.description}</div>
           </div>
-          <div className="fixed bottom-24 left-6 right-6">
-            <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor || '#6366f1' }} className="w-full text-white py-5 rounded-2xl font-bold uppercase text-[12px] tracking-widest shadow-2xl flex items-center justify-center gap-3">
-              {activeDetailProduct.detailButtonText || activeDetailProduct.buttonText || 'ЗАКАЗАТЬ РЕШЕНИЕ'} <ChevronRight size={18} />
+          <div className="fixed bottom-10 left-6 right-6">
+            <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor }} className="w-full py-5 rounded-2xl text-white font-black uppercase text-[12px] shadow-2xl flex items-center justify-center gap-3">
+              {activeDetailProduct.detailButtonText || 'ОФОРМИТЬ'} <ChevronRight size={18} />
             </button>
           </div>
         </div>
       )}
-      {view === 'admin' && (isAdminAuthenticated ? <div className="space-y-8 pb-32"><div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 mb-6"><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600">Bot Token</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600">Chat ID</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-rose-500">Webhook URL</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} /></div><button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest">Обновить данные</button></div><AdminDashboard /><button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4">Выйти</button></div> : <div className="py-12 text-center space-y-6"><h2 className="text-xl font-bold uppercase text-slate-900">Вход в панель</h2><input type="password" placeholder="Пароль" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl text-center outline-none" value={password} onChange={e => setPassword(e.target.value)} /><button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-widest">Войти</button></div>)}
-      {checkoutProduct && (
-        <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12">
-          <div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl">
-            <button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300"><X size={24}/></button>
-            <h2 className="text-lg font-bold text-slate-900 uppercase">Оформление заказа</h2>
-            <form onSubmit={handleCheckout} className="space-y-4">
-              <input required placeholder="Ваше имя" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 outline-none" value={customerName} onChange={e => setCustomerName(e.target.value)} />
-              <input required type="email" placeholder="Email" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 outline-none" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
-              <input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 outline-none" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
-              <div className="space-y-3 py-2">
-                <label className="flex items-start gap-3"><input type="checkbox" required className="mt-1" /> <span className="text-[12px] text-slate-500">Согласен с <a href="https://axl.antol.net.ru/shabl/oferta_shab" target="_blank" className="text-indigo-600 underline">Офертой</a></span></label>
-                <label className="flex items-start gap-3"><input type="checkbox" required className="mt-1" /> <span className="text-[12px] text-slate-500">Ознакомлен с <a href="https://axl.antol.net.ru/politica" target="_blank" className="text-indigo-600 underline">Политикой конфиденциальности</a></span></label>
-              </div>
-              <button type="submit" className="w-full py-5 rounded-xl font-bold uppercase text-[12px] tracking-widest bg-indigo-600 text-white">Оплатить {checkoutProduct.price} ₽</button>
-            </form>
+      {view === 'admin' && (isAdminAuthenticated ? (
+        <div className="space-y-8 pb-32">
+          {/* Блок настроек: Возвращен и закреплен */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 mb-6">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-indigo-600">Bot Token</label>
+              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-indigo-600">Chat ID</label>
+              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-rose-500">Webhook URL</label>
+              <input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} />
+            </div>
+            <button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest">Обновить настройки</button>
           </div>
+          
+          <AdminDashboard />
+          
+          <button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4">Выйти</button>
         </div>
-      )}
-      {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" alt="Full view" /></div>}
-      {activePaymentUrl && (
-        <div className="fixed inset-0 z-[7000] bg-white flex flex-col">
-          <div className="p-4 border-b flex justify-between items-center"><span className="font-bold text-[11px] uppercase text-slate-400">Оплата</span><button onClick={() => { setActivePaymentUrl(null); setIframeLoaded(false); }} className="p-2 bg-rose-500 text-white rounded-xl shadow-md"><X size={20}/></button></div>
-          <div className="flex-grow relative bg-slate-50">
-            {!iframeLoaded && <div className="absolute inset-0 flex flex-col items-center justify-center p-10"><div className="w-16 h-16 border-[5px] border-indigo-600 border-t-transparent rounded-full animate-spin"></div><p className="mt-4 font-black uppercase text-[13px]">Загрузка оплаты...</p></div>}
-            <iframe src={activePaymentUrl} className={`w-full h-full border-none transition-opacity ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`} onLoad={() => setIframeLoaded(true)} />
-          </div>
+      ) : (
+        <div className="py-20 text-center space-y-6">
+          <h2 className="text-xl font-bold uppercase">Админ-панель</h2>
+          <input type="password" placeholder="Пароль" className="w-full p-5 bg-white border rounded-2xl text-center" value={password} onChange={e => setPassword(e.target.value)} />
+          <button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold uppercase">Войти</button>
         </div>
-      )}
+      ))}
+      {checkoutProduct && <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12"><div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl"><button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300"><X size={24}/></button><h2 className="text-lg font-bold uppercase">Заказ: {checkoutProduct.title}</h2><form onSubmit={handleCheckout} className="space-y-4"><input required placeholder="Ваше имя" className="w-full bg-slate-50 border p-4 rounded-xl" value={customerName} onChange={e => setCustomerName(e.target.value)} /><input required type="email" placeholder="Email" className="w-full bg-slate-50 border p-4 rounded-xl" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} /><input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border p-4 rounded-xl" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /><div className="space-y-2 py-2"><label className="flex items-start gap-3 text-[11px] text-slate-500"><input type="checkbox" required /> Принимаю условия оферты</label><label className="flex items-start gap-3 text-[11px] text-slate-500"><input type="checkbox" required /> Согласен с политикой конфиденциальности</label></div><button type="submit" className="w-full py-5 rounded-xl font-bold uppercase bg-indigo-600 text-white">Оплатить {checkoutProduct.price} ₽</button></form></div></div>}
+      {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg" alt="" /></div>}
+      {activePaymentUrl && <div className="fixed inset-0 z-[7000] bg-white flex flex-col"><div className="p-4 border-b flex justify-between items-center"><span className="font-bold text-[11px] uppercase text-slate-400">Оплата</span><button onClick={() => { setActivePaymentUrl(null); setIframeLoaded(false); }} className="p-2 bg-rose-500 text-white rounded-xl"><X size={20}/></button></div><div className="flex-grow relative bg-slate-50">{!iframeLoaded && <div className="absolute inset-0 flex flex-col items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>}<iframe src={activePaymentUrl} className={`w-full h-full border-none ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`} onLoad={() => setIframeLoaded(true)} /></div></div>}
     </Layout>
   );
 };
