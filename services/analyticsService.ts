@@ -3,14 +3,17 @@ import { Session, OrderLog } from '../types';
 
 const STORAGE_KEY = 'olga_analytics_sessions_v2';
 const ORDERS_KEY = 'olga_analytics_orders_v2';
-const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwjPg6wu9cXpxcXpS5_DGkq18e5RSRgnD0szdntniGyZM5Qdh4vXITD6-J6Iezy0ltY/exec';
+// Синхронизировано с App.tsx - это критически важно для работы на новых устройствах
+const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycby3JT65rFs7fB4n7GYph3h6qonOEERRxiyhD11DRD9lT4TkDCin9Q4uF5vcclXPpt46/exec';
 
 const getWebhookUrl = () => {
   try {
     const config = localStorage.getItem('olga_tg_config');
     if (config) {
       const parsed = JSON.parse(config);
-      if (parsed.googleSheetWebhook) return parsed.googleSheetWebhook;
+      if (parsed.googleSheetWebhook && parsed.googleSheetWebhook.trim() !== '') {
+        return parsed.googleSheetWebhook;
+      }
     }
   } catch (e) {}
   return DEFAULT_WEBHOOK;
@@ -21,10 +24,10 @@ const formatNow = () => new Date().toLocaleString('ru-RU');
 
 const sendToScript = async (payload: any) => {
   const webhook = getWebhookUrl();
-  if (!webhook || webhook.trim() === '') return;
+  if (!webhook) return;
 
   try {
-    // text/plain — это ключ к успеху для Google Script + CORS (no-cors)
+    // Используем keepalive для надежности на мобильных устройствах
     await fetch(webhook, {
       method: 'POST',
       mode: 'no-cors',
@@ -32,7 +35,7 @@ const sendToScript = async (payload: any) => {
       body: JSON.stringify(payload)
     });
   } catch (e) {
-    console.error("Critical Analytics Error:", e);
+    console.warn("Analytics Sync Issue:", e);
   }
 };
 
@@ -63,6 +66,7 @@ export const analyticsService = {
     orders.push(newOrder);
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
 
+    // Отправляем данные в таблицу
     await sendToScript({
       action: 'log',
       type: 'order',
@@ -83,26 +87,17 @@ export const analyticsService = {
     const params = new URLSearchParams(window.location.search);
     const timestamp = Date.now();
     
-    let city = 'Unknown';
-    let country = 'Unknown';
-
-    try {
-      const res = await fetch('https://ipapi.co/json/');
-      if (res.ok) {
-        const data = await res.json();
-        city = data.city || 'Unknown';
-        country = data.country_name || 'Unknown';
-      }
-    } catch (e) {}
-
+    // Начальные данные (отправляем сразу, не дожидаясь IP)
+    const utmSource = params.get('utm_source') || 'direct';
+    
     const newSession: Session = {
       id: sessionId,
       startTime: timestamp,
-      city,
-      country,
+      city: 'Detecting...',
+      country: 'Detecting...',
       pathHistory: ['home'],
       duration: 0,
-      utmSource: params.get('utm_source') || 'direct',
+      utmSource: utmSource,
       utmMedium: params.get('utm_medium') || 'none',
       utmCampaign: params.get('utm_campaign') || 'none'
     };
@@ -111,15 +106,35 @@ export const analyticsService = {
     sessions.push(newSession);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
 
-    await sendToScript({
+    // Сначала инициируем отправку базовой сессии, чтобы она точно попала в таблицу
+    sendToScript({
       action: 'log',
       type: 'session_start',
       sessionId: sessionId,
-      city: city,
-      country: country,
-      utmSource: newSession.utmSource,
+      city: 'Mobile/Web',
+      country: 'Pending',
+      utmSource: utmSource,
       dateStr: formatNow()
     });
+
+    // Затем пытаемся уточнить геопозицию в фоновом режиме
+    try {
+      fetch('https://ipapi.co/json/')
+        .then(res => res.json())
+        .then(data => {
+          if (data.city) {
+            sendToScript({
+              action: 'log',
+              type: 'path_update',
+              sessionId: sessionId,
+              path: 'geo_update',
+              product: `Локация: ${data.city}, ${data.country_name}`,
+              dateStr: formatNow()
+            });
+          }
+        })
+        .catch(() => {});
+    } catch (e) {}
 
     return sessionId;
   },

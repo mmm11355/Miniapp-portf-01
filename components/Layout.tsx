@@ -39,7 +39,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
         {children}
       </main>
 
-      {/* Навигация */}
+      {/* Навигация с повышенной контрастностью неактивных элементов */}
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#f0f3ff]/95 backdrop-blur-xl border-t border-indigo-100/50 grid grid-cols-5 h-20 px-2 z-[90] pb-safe shadow-[0_-8px_30px_rgba(79,70,229,0.08)]">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -50,10 +50,12 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
               onClick={() => onNavigate(item.id as ViewState)}
               className="flex flex-col items-center justify-center gap-1 transition-all active:scale-90"
             >
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-lg' : 'text-indigo-300'}`}>
+              {/* Неактивная иконка стала ярче (indigo-400 вместо indigo-300) */}
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-lg' : 'text-indigo-400'}`}>
                 <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
               </div>
-              <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-indigo-700' : 'text-indigo-300/80'}`}>
+              {/* Неактивный текст стал значительно контрастнее (indigo-500/80 вместо indigo-300/80) */}
+              <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-indigo-700' : 'text-indigo-500/80'}`}>
                 {item.label}
               </span>
             </button>

@@ -14,6 +14,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('home');
   const [isSyncing, setIsSyncing] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   
   const [products, setProducts] = useState<Product[]>(() => {
     try {
@@ -143,19 +144,69 @@ const App: React.FC = () => {
     window.scrollTo(0, 0);
   };
 
+  const sendTelegramNotification = async (order: { product: string, price: string | number, name: string, email: string, phone: string }) => {
+    if (!telegramConfig.botToken || !telegramConfig.chatId) return;
+    const message = `<b>🚀 НОВЫЙ ЗАКАЗ</b>\n\n` +
+                    `<b>Товар:</b> ${order.product}\n` +
+                    `<b>Сумма:</b> ${order.price} ₽\n\n` +
+                    `<b>👤 Клиент:</b> ${order.name}\n` +
+                    `<b>📧 Email:</b> ${order.email}\n` +
+                    `<b>📞 Тел:</b> ${order.phone}\n` +
+                    `<b>🔗 UTM:</b> ${new URLSearchParams(window.location.search).get('utm_source') || 'direct'}`;
+    
+    try {
+      await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: telegramConfig.chatId,
+          text: message,
+          parse_mode: 'HTML'
+        })
+      });
+    } catch (e) {
+      console.error("Direct TG notify error:", e);
+    }
+  };
+
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!checkoutProduct || isSubmitting) return;
     setIsSubmitting(true);
+    
+    const orderData = {
+      product: checkoutProduct.title,
+      price: checkoutProduct.price,
+      name: customerName,
+      email: customerEmail,
+      phone: customerPhone
+    };
+
     try {
+      // 1. Сначала отправляем в Telegram (это быстрее и критичнее для уведомления)
+      await sendTelegramNotification(orderData);
+
+      // 2. Логируем в аналитику (Google Script)
       analyticsService.logOrder({
-        productTitle: checkoutProduct.title, price: checkoutProduct.price,
+        productTitle: checkoutProduct.title, 
+        price: checkoutProduct.price,
         customerName, customerEmail, customerPhone,
         utmSource: new URLSearchParams(window.location.search).get('utm_source') || 'direct'
       }, sessionId);
-      setActivePaymentUrl(checkoutProduct.prodamusId?.startsWith('http') ? checkoutProduct.prodamusId : 'https://antol.payform.ru/');
+
+      // 3. Переходим к оплате
+      setIframeLoaded(false);
+      const paymentUrl = checkoutProduct.prodamusId?.startsWith('http') 
+        ? checkoutProduct.prodamusId 
+        : 'https://antol.payform.ru/';
+      
+      setActivePaymentUrl(paymentUrl);
       setCheckoutProduct(null);
-    } catch (err) {} finally { setIsSubmitting(false); }
+    } catch (err) {
+      console.error("Checkout process error:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const MediaRenderer: React.FC<{ url: string; type: 'image' | 'video'; className?: string; onClick?: () => void; isDetail?: boolean }> = ({ url, type, className, onClick, isDetail }) => {
@@ -269,7 +320,17 @@ const App: React.FC = () => {
         <div className="space-y-4">
           <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
             {['All', ...categories].map(c => (
-              <button key={c} onClick={() => setFilter(c)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 ${filter === c ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>{c === 'All' ? 'Все' : c}</button>
+              <button 
+                key={c} 
+                onClick={() => setFilter(c)} 
+                className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 ${
+                  filter === c 
+                  ? 'bg-indigo-600 text-white shadow-md' 
+                  : 'bg-slate-200 text-slate-600 border border-slate-300' 
+                }`}
+              >
+                {c === 'All' ? 'Все' : c}
+              </button>
             ))}
           </div>
           <div className="grid grid-cols-1 gap-1">{filteredProducts.map(renderProductCard)}</div>
@@ -319,7 +380,32 @@ const App: React.FC = () => {
       {view === 'admin' && (isAdminAuthenticated ? <div className="space-y-8 pb-32"><div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 mb-6"><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600 ml-1">Bot Token</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600 ml-1">Chat ID</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-rose-500 ml-1">Webhook URL</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} /></div><button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest">Обновить данные</button></div><AdminDashboard /><button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4">Выйти из панели</button></div> : <div className="py-12 text-center space-y-6"><h2 className="text-xl font-bold tracking-tight uppercase text-slate-900">Вход в панель</h2><input type="password" placeholder="Пароль" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-center text-slate-900 outline-none shadow-sm" value={password} onChange={e => setPassword(e.target.value)} /><button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-widest">Войти</button></div>)}
       {checkoutProduct && <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12 animate-in fade-in"><div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl"><button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300"><X size={24}/></button><h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Оформление заказа</h2><form onSubmit={handleCheckout} className="space-y-3"><input required placeholder="Ваше имя" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none" value={customerName} onChange={e => setCustomerName(e.target.value)} /><input required type="email" placeholder="Email" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} /><input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /><button type="submit" className="w-full bg-indigo-600 text-white py-5 rounded-xl font-bold uppercase text-[12px] tracking-widest shadow-lg active:scale-95 transition-transform">Оплатить {checkoutProduct.price} ₽</button></form></div></div>}
       {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4 animate-in zoom-in duration-200" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" alt="Full view" /></div>}
-      {activePaymentUrl && <div className="fixed inset-0 z-[7000] bg-white flex flex-col"><div className="p-4 border-b flex justify-between items-center bg-white"><span className="font-bold text-[11px] uppercase text-slate-400">Платеж</span><button onClick={() => setActivePaymentUrl(null)} className="p-2 bg-rose-500 text-white rounded-xl"><X size={20}/></button></div><iframe src={activePaymentUrl} className="flex-grow w-full border-none" /></div>}
+      {activePaymentUrl && (
+        <div className="fixed inset-0 z-[7000] bg-white flex flex-col animate-in fade-in">
+          <div className="p-4 border-b flex justify-between items-center bg-white shadow-sm">
+            <span className="font-bold text-[11px] uppercase text-slate-400 tracking-widest">Оплата заказа</span>
+            <button onClick={() => { setActivePaymentUrl(null); setIframeLoaded(false); }} className="p-2 bg-rose-500 text-white rounded-xl shadow-md active:scale-90 transition-all">
+              <X size={20}/>
+            </button>
+          </div>
+          <div className="flex-grow relative bg-slate-50">
+            {!iframeLoaded && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center space-y-6">
+                <div className="w-16 h-16 border-[5px] border-indigo-600 border-t-transparent rounded-full animate-spin shadow-inner"></div>
+                <div className="space-y-2">
+                  <h3 className="text-slate-900 font-black uppercase text-[13px] tracking-widest">Переходим к оплате...</h3>
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide leading-relaxed">Пожалуйста, подождите, загружаем безопасную платежную систему</p>
+                </div>
+              </div>
+            )}
+            <iframe 
+              src={activePaymentUrl} 
+              className={`w-full h-full border-none transition-opacity duration-500 ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`} 
+              onLoad={() => setIframeLoaded(true)}
+            />
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };
