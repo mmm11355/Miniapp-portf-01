@@ -30,6 +30,7 @@ export interface OrderLog {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  tgUsername?: string; // Добавленное поле
   utmSource: string;
 }
 

@@ -146,12 +146,18 @@ const App: React.FC = () => {
 
   const sendTelegramNotification = async (order: { product: string, price: string | number, name: string, email: string, phone: string }) => {
     if (!telegramConfig.botToken || !telegramConfig.chatId) return;
+    
+    // Получаем ник через SDK
+    const tg = (window as any).Telegram?.WebApp;
+    const tgHandle = tg?.initDataUnsafe?.user?.username ? `@${tg.initDataUnsafe.user.username}` : 'не задан';
+
     const message = `<b>🚀 НОВЫЙ ЗАКАЗ</b>\n\n` +
                     `<b>Товар:</b> ${order.product}\n` +
                     `<b>Сумма:</b> ${order.price} ₽\n\n` +
                     `<b>👤 Клиент:</b> ${order.name}\n` +
                     `<b>📧 Email:</b> ${order.email}\n` +
                     `<b>📞 Тел:</b> ${order.phone}\n` +
+                    `<b>🔹 Ник в TG:</b> ${tgHandle}\n\n` +
                     `<b>🔗 UTM:</b> ${new URLSearchParams(window.location.search).get('utm_source') || 'direct'}`;
     
     try {
@@ -183,18 +189,18 @@ const App: React.FC = () => {
     };
 
     try {
-      // 1. Сначала отправляем в Telegram
-      await sendTelegramNotification(orderData);
+      // Запускаем Telegram и Аналитику параллельно, чтобы не ждать друг друга
+      await Promise.allSettled([
+        sendTelegramNotification(orderData),
+        analyticsService.logOrder({
+          productTitle: checkoutProduct.title, 
+          price: checkoutProduct.price,
+          customerName, customerEmail, customerPhone,
+          utmSource: new URLSearchParams(window.location.search).get('utm_source') || 'direct'
+        }, sessionId)
+      ]);
 
-      // 2. Логируем в аналитику
-      analyticsService.logOrder({
-        productTitle: checkoutProduct.title, 
-        price: checkoutProduct.price,
-        customerName, customerEmail, customerPhone,
-        utmSource: new URLSearchParams(window.location.search).get('utm_source') || 'direct'
-      }, sessionId);
-
-      // 3. Переходим к оплате
+      // Переходим к оплате
       setIframeLoaded(false);
       const paymentUrl = checkoutProduct.prodamusId?.startsWith('http') 
         ? checkoutProduct.prodamusId 
@@ -299,7 +305,7 @@ const App: React.FC = () => {
               </div>
             </div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Ольга Антонова</h1>
-            <p className="text-[13px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
+            <p className="text-[16px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
           </div>
           
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">

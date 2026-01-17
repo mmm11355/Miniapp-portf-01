@@ -5,6 +5,15 @@ const STORAGE_KEY = 'olga_analytics_sessions_v2';
 const ORDERS_KEY = 'olga_analytics_orders_v2';
 const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycby3JT65rFs7fB4n7GYph3h6qonOEERRxiyhD11DRD9lT4TkDCin9Q4uF5vcclXPpt46/exec';
 
+const getTgUsername = () => {
+  try {
+    const tg = (window as any).Telegram?.WebApp;
+    return tg?.initDataUnsafe?.user?.username ? `@${tg.initDataUnsafe.user.username}` : 'нет_ника';
+  } catch (e) {
+    return 'undefined';
+  }
+};
+
 const getWebhookUrl = () => {
   try {
     const config = localStorage.getItem('olga_tg_config');
@@ -26,13 +35,10 @@ const sendToScript = async (payload: any) => {
   if (!webhook) return;
 
   try {
-    // Используем keepalive: true для гарантированной отправки с мобильных
-    // Это позволяет запросу завершиться даже если страница закрыта или переключена
     await fetch(webhook, {
       method: 'POST',
-      mode: 'no-cors',
       keepalive: true,
-      headers: { 'Content-Type': 'text/plain' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
   } catch (e) {
@@ -57,10 +63,12 @@ export const analyticsService = {
 
   logOrder: async (order: Omit<OrderLog, 'id' | 'timestamp'>, currentSessionId?: string) => {
     const timestamp = Date.now();
+    const tgUsername = getTgUsername();
     const newOrder: OrderLog = {
       ...order,
       id: Math.random().toString(36).substr(2, 9),
-      timestamp
+      timestamp,
+      tgUsername
     };
 
     const orders = analyticsService.getOrders();
@@ -74,6 +82,7 @@ export const analyticsService = {
       name: newOrder.customerName,
       email: newOrder.customerEmail,
       phone: newOrder.customerPhone,
+      tgUsername: tgUsername, // Отправляем ник в таблицу
       product: newOrder.productTitle,
       price: newOrder.price,
       utmSource: newOrder.utmSource,
@@ -88,6 +97,7 @@ export const analyticsService = {
     const timestamp = Date.now();
     
     const utmSource = params.get('utm_source') || 'direct';
+    const tgUsername = getTgUsername();
     
     const newSession: Session = {
       id: sessionId,
@@ -105,18 +115,17 @@ export const analyticsService = {
     sessions.push(newSession);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
 
-    // Мгновенная отправка начала сессии
     sendToScript({
       action: 'log',
       type: 'session_start',
       sessionId: sessionId,
+      tgUsername: tgUsername, // Записываем кто зашел
       city: 'Mobile/Web',
       country: 'Active',
       utmSource: utmSource,
       dateStr: formatNow()
     });
 
-    // Фоновое уточнение IP
     try {
       fetch('https://ipapi.co/json/')
         .then(res => res.json())
