@@ -19,28 +19,28 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
   ];
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb] flex flex-col max-w-md mx-auto relative border-x border-slate-50 overflow-x-hidden">
-      {/* Шапка: возврат к py-4 и крупным текстам */}
-      <header className="sticky top-0 z-[80] bg-[#f0f3ff]/95 backdrop-blur-md border-b border-indigo-100/50 px-5 py-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3" onClick={() => onNavigate('home')}>
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-[12px] shadow-md">ОА</div>
+    <div className="min-h-screen bg-[#f6f8fb] flex flex-col max-w-md mx-auto relative border-x border-slate-100 overflow-x-hidden">
+      {/* ПРЕМИАЛЬНАЯ ФИКСИРОВАННАЯ ШАПКА */}
+      <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-md z-[1500] bg-white/90 backdrop-blur-md border-b border-slate-100 px-5 py-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate('home')}>
+          <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-xl flex items-center justify-center text-white font-black text-[12px] shadow-lg shadow-indigo-100">ОА</div>
           <div className="flex flex-col">
              <span className="font-bold text-slate-900 text-[14px] tracking-tight uppercase leading-none">О ГЕТКУРС</span>
              <span className="font-bold text-indigo-500 text-[9px] tracking-widest uppercase mt-1">И НЕ ТОЛЬКО</span>
           </div>
         </div>
-        <button onClick={() => onNavigate('admin')} className={`p-2.5 transition-all rounded-xl ${activeView === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-200'}`}>
-          <ShieldCheck size={20} strokeWidth={2.5} />
+        <button onClick={() => onNavigate('admin')} className={`p-2.5 transition-all rounded-xl ${activeView === 'admin' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-300'}`}>
+          <ShieldCheck size={22} strokeWidth={2.5} />
         </button>
       </header>
 
-      {/* Контент: возврат к p-5 */}
-      <main className="flex-grow p-5 pb-32">
+      {/* Контент */}
+      <main className="flex-grow pt-24 pb-28 px-5">
         {children}
       </main>
 
-      {/* Навигация с повышенной контрастностью неактивных элементов */}
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#f0f3ff]/95 backdrop-blur-xl border-t border-indigo-100/50 grid grid-cols-5 h-20 px-2 z-[90] pb-safe shadow-[0_-8px_30px_rgba(79,70,229,0.08)]">
+      {/* ПРЕМИАЛЬНАЯ НАВИГАЦИЯ */}
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/95 backdrop-blur-md border-t border-slate-100 grid grid-cols-5 h-20 px-2 z-[1500] pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
@@ -50,12 +50,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
               onClick={() => onNavigate(item.id as ViewState)}
               className="flex flex-col items-center justify-center gap-1 transition-all active:scale-90"
             >
-              {/* Неактивная иконка стала ярче (indigo-400 вместо indigo-300) */}
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-lg' : 'text-indigo-400'}`}>
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400'}`}>
                 <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
               </div>
-              {/* Неактивный текст стал значительно контрастнее (indigo-500/80 вместо indigo-300/80) */}
-              <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-indigo-700' : 'text-indigo-500/80'}`}>
+              <span className={`text-[8px] font-black tracking-widest uppercase ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
                 {item.label}
               </span>
             </button>

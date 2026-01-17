@@ -7,7 +7,7 @@ import { INITIAL_PRODUCTS, ADMIN_PASSWORD } from './constants';
 import { analyticsService } from './services/analyticsService';
 import { 
   X, ChevronRight, Send, Gift, Sparkles, CreditCard, PlayCircle, ChevronLeft, 
-  Trophy, Award, Briefcase as BriefcaseIcon, Globe, ShieldCheck, ShoppingBag, Clock, CheckCircle
+  Trophy, Award, Briefcase as BriefcaseIcon, Globe, ShieldCheck, ShoppingBag, Clock, CheckCircle, MessageCircle
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -69,9 +69,15 @@ const App: React.FC = () => {
         let cloudOrders: any[] = [];
         if (telegramConfig.googleSheetWebhook) {
           try {
-            const res = await fetch(`${telegramConfig.googleSheetWebhook}?action=getStats&_t=${Date.now()}`, { cache: 'no-store' });
+            const res = await fetch(`${telegramConfig.googleSheetWebhook}?action=getStats&_t=${Date.now()}`, { 
+              method: 'GET',
+              redirect: 'follow',
+              cache: 'no-store' 
+            });
             const data = await res.json();
-            if (data.status === 'success') cloudOrders = data.orders || [];
+            if (data.status === 'success') {
+              cloudOrders = data.orders || data.data?.orders || [];
+            }
           } catch (e) {}
         }
 
@@ -124,7 +130,7 @@ const App: React.FC = () => {
     if (!telegramConfig.googleSheetWebhook) return;
     if (showLoading) setIsSyncing(true);
     try {
-      const response = await fetch(`${telegramConfig.googleSheetWebhook}?action=getProducts&_t=${Date.now()}`);
+      const response = await fetch(`${telegramConfig.googleSheetWebhook}?action=getProducts&_t=${Date.now()}`, { redirect: 'follow' });
       const rawData = await response.json();
       if (rawData && Array.isArray(rawData)) {
         const sanitizedData = rawData
@@ -283,13 +289,41 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4"><Trophy className="text-amber-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Победитель Хакатона EdMarket</p></div>
             <div className="flex items-center gap-4"><Award className="text-indigo-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
             <div className="flex items-center gap-4"><BriefcaseIcon className="text-emerald-500" size={18} /><p className="text-[13px] font-bold text-slate-700">60+ реализованных проектов</p></div>
+            <div className="flex items-center gap-4">
+              <Globe className="text-indigo-400" size={18} />
+              <p className="text-[13px] font-bold text-slate-700">Сайт-портфолио <a href="https://vk.cc/cOx50S" target="_blank" className="text-indigo-600 underline ml-1">vk.cc/cOx50S</a></p>
+            </div>
           </div>
-          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between transition-all active:scale-[0.98]">
+          <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[10px] shadow-2xl flex items-center justify-between transition-all active:scale-[0.98]">
             <div className="text-left"><h3 className="text-lg font-black uppercase">Нужна помощь?</h3><p className="text-[9px] font-black opacity-70 uppercase tracking-widest">СВЯЗАТЬСЯ В TELEGRAM</p></div>
             <Send size={28} className="opacity-30" />
           </button>
         </div>
       )}
+
+      {view === 'contact' && (
+        <div className="space-y-10 text-center animate-in fade-in duration-500 py-10">
+          <div className="w-24 h-24 bg-white rounded-[2rem] flex items-center justify-center mx-auto text-indigo-600 shadow-2xl border border-slate-50">
+             <MessageCircle size={44} strokeWidth={1.5} />
+          </div>
+          <div className="space-y-3">
+            <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">СВЯЗАТЬСЯ<br/>СО МНОЙ</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">ОТВЕТ В ТЕЧЕНИЕ ПАРУ ЧАСОВ</p>
+          </div>
+          
+          <button 
+            onClick={() => window.open('https://t.me/Olga_lav', '_blank')} 
+            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-5 rounded-[10px] shadow-2xl flex items-center justify-between active:scale-[0.98] transition-all"
+          >
+            <div className="text-left">
+              <h3 className="text-lg font-black uppercase leading-none">Написать в TG</h3>
+              <p className="text-[8px] font-black opacity-70 uppercase tracking-widest mt-1">ПРЯМАЯ СВЯЗЬ СО МНОЙ</p>
+            </div>
+            <Send size={24} className="opacity-50" />
+          </button>
+        </div>
+      )}
+
       {(view === 'portfolio' || view === 'shop' || view === 'bonuses') && (
         <div className="space-y-4">
           {view === 'shop' && (
@@ -303,7 +337,7 @@ const App: React.FC = () => {
           )}
           <div className="grid grid-cols-1 gap-1">
             {(view === 'portfolio' ? portfolioItems : view === 'bonuses' ? bonuses : filteredProducts).map(p => (
-              <div key={p.id} style={{ backgroundColor: p.cardBgColor }} className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col mb-5 p-4 transition-all">
+              <div key={p.id} style={{ backgroundColor: p.cardBgColor }} className="rounded-2xl border border-slate-100 border-opacity-10 overflow-hidden shadow-sm flex flex-col mb-5 p-4 transition-all">
                 <div className="flex justify-between items-center mb-2">
                   <span style={{ color: p.buttonColor }} className="text-[10px] font-black uppercase tracking-widest opacity-60">{p.category}</span>
                   <Sparkles size={14} style={{ color: p.buttonColor }} className="opacity-30" />
@@ -322,7 +356,6 @@ const App: React.FC = () => {
         </div>
       )}
       
-      {/* ИСПРАВЛЕННЫЙ ЛОНГРИД: ТЕПЕРЬ НЕ ПЕРЕКРЫВАЕТ МЕНЮ */}
       {activeDetailProduct && (
         <div className="fixed inset-x-0 top-0 bottom-20 z-[85] bg-white flex flex-col animate-in slide-in-from-bottom border-b border-slate-50">
           <div className="p-4 flex items-center justify-between border-b bg-white/95 sticky top-0 z-[10]">
@@ -330,27 +363,26 @@ const App: React.FC = () => {
             <span className="font-bold text-[11px] text-slate-400 uppercase truncate px-4 tracking-widest">{activeDetailProduct.title}</span>
             <button onClick={() => setActiveDetailProduct(null)} className="p-2 bg-slate-50 rounded-xl"><X size={20}/></button>
           </div>
-          <div className="flex-grow overflow-y-auto p-6 space-y-6 pb-24">
+          <div className="flex-grow overflow-y-auto p-6 space-y-6 pb-24 no-scrollbar">
             <h2 className="text-2xl font-black text-slate-900 uppercase leading-tight tracking-tight">{activeDetailProduct.title}</h2>
             
-            {activeDetailProduct.detailGallery && activeDetailProduct.detailGallery.length > 0 ? (
-              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-                {activeDetailProduct.detailGallery.map((m:any, i:number) => (
-                  <div key={i} className="flex-shrink-0 w-[85%] aspect-video">
+            <div className="flex flex-col gap-6">
+              {activeDetailProduct.detailGallery && activeDetailProduct.detailGallery.length > 0 ? (
+                activeDetailProduct.detailGallery.map((m:any, i:number) => (
+                  <div key={i} className="w-full">
                     <MediaRenderer url={m.url} type={m.type} isDetail={true} onClick={() => m.type === 'image' && setFullscreenImage(m.url)} />
                   </div>
-                ))}
-              </div>
-            ) : (
-              <MediaRenderer url={activeDetailProduct.imageUrl} type={activeDetailProduct.mediaType} isDetail={true} onClick={() => activeDetailProduct.mediaType === 'image' && setFullscreenImage(activeDetailProduct.imageUrl)} />
-            )}
+                ))
+              ) : (
+                <MediaRenderer url={activeDetailProduct.imageUrl} type={activeDetailProduct.mediaType} isDetail={true} onClick={() => activeDetailProduct.mediaType === 'image' && setFullscreenImage(activeDetailProduct.imageUrl)} />
+              )}
+            </div>
 
             <div className="text-slate-700 font-medium leading-relaxed text-[15px]">
               {renderRichText(activeDetailProduct.detailFullDescription || activeDetailProduct.description)}
             </div>
           </div>
           
-          {/* КНОПКА ПОДНЯТА НАД МЕНЮ */}
           <div className="absolute bottom-6 left-6 right-6 z-[20]">
             <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor }} className="w-full py-5 rounded-2xl text-white font-black uppercase text-[12px] shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95">
               {activeDetailProduct.detailButtonText || 'ЗАКАЗАТЬ'} <ChevronRight size={18} />
