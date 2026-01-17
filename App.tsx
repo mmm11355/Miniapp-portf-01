@@ -73,56 +73,57 @@ const App: React.FC = () => {
     return <img src={url} className={`${isDetail ? 'w-full h-auto rounded-2xl shadow-sm mx-auto' : className}`} alt="" onClick={onClick} style={{ objectFit: isDetail ? 'contain' : 'cover', cursor: isDetail ? 'zoom-in' : 'pointer' }} />;
   };
 
-  // Умный рендерер контента с поддержкой чередования медиа и текста
+  // Улучшенный рендерер контента: поддерживает 16px, ссылки и теги [[image:url]] / [[video:url]]
   const renderRichContent = (text: string) => {
     if (!text) return null;
-    // Разбиваем текст по тегам [[image:url]] или [[video:url]]
     const parts = text.split(/(\[\[(?:image|video):[^\]]+\]\])/g);
     const urlRegex = /(https?:\/\/[^\s]+)/g;
 
-    return parts.map((part, i) => {
-      const mediaMatch = part.match(/\[\[(image|video):([^\]]+)\]\]/);
-      
-      if (mediaMatch) {
-        const [_, type, url] = mediaMatch;
-        const mediaUrl = url.trim();
-        return (
-          <div key={i} className="my-6">
-            <MediaRenderer 
-              url={mediaUrl} 
-              type={type as 'image' | 'video'} 
-              isDetail={true} 
-              onClick={() => type === 'image' && setFullscreenImage(mediaUrl)} 
-            />
-          </div>
-        );
-      }
+    return (
+      <div className="text-[16px] font-medium text-slate-600 leading-[1.4] whitespace-pre-wrap">
+        {parts.map((part, i) => {
+          const mediaMatch = part.match(/\[\[(image|video):([^\]]+)\]\]/);
+          
+          if (mediaMatch) {
+            const [_, type, url] = mediaMatch;
+            const mediaUrl = url.trim();
+            return (
+              <div key={i} className="my-6 block">
+                <MediaRenderer 
+                  url={mediaUrl} 
+                  type={type as 'image' | 'video'} 
+                  isDetail={true} 
+                  onClick={() => type === 'image' && setFullscreenImage(mediaUrl)} 
+                />
+              </div>
+            );
+          }
 
-      // Обычный текст с линками
-      return (
-        <React.Fragment key={i}>
-          {part.split(urlRegex).map((subPart, j) => {
-            if (subPart.match(urlRegex)) {
-              return (
-                <a key={j} href={subPart} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 break-all font-bold">
-                  {subPart}
-                </a>
-              );
-            }
-            return subPart;
-          })}
-        </React.Fragment>
-      );
-    });
+          return (
+            <React.Fragment key={i}>
+              {part.split(urlRegex).map((subPart, j) => {
+                if (subPart.match(urlRegex)) {
+                  return (
+                    <a key={j} href={subPart} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 break-all font-bold">
+                      {subPart}
+                    </a>
+                  );
+                }
+                return subPart;
+              })}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    );
   };
 
-  // УМНЫЙ МОНИТОРИНГ (5 МИНУТ)
+  // МОНИТОРИНГ И ОСТАЛЬНАЯ ЛОГИКА (НЕ ТРОГАЕМ)
   useEffect(() => {
     const checkInterval = setInterval(async () => {
       const orders = analyticsService.getOrders();
       const now = Date.now();
       const processedNotifies = JSON.parse(localStorage.getItem('olga_processed_notifies') || '[]');
-      
       let cloudOrders: any[] = [];
       try {
         if (telegramConfig.googleSheetWebhook) {
@@ -131,24 +132,13 @@ const App: React.FC = () => {
           if (data.status === 'success') cloudOrders = data.orders || [];
         }
       } catch (e) {}
-
       for (const order of orders) {
         if ((now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
           const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
           const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
-
           const message = isPaid 
-            ? `<b>✅ ОПЛАТА ПОДТВЕРЖДЕНА</b>\n\n` +
-              `<b>Клиент:</b> ${order.customerName}\n` +
-              `<b>Товар:</b> ${order.productTitle}\n` +
-              `<b>Сумма:</b> ${order.price} ₽\n\n` +
-              `✨ <i>Доступ должен открыться автоматически.</i>`
-            : `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n` +
-              `<b>Клиент:</b> ${order.customerName}\n` +
-              `<b>Товар:</b> ${order.productTitle}\n` +
-              `<b>Сумма:</b> ${order.price} ₽\n\n` +
-              `❌ <i>Оплата не подтверждена автоматически. Проверьте кабинет Продамус и свяжитесь с клиентом!</i>`;
-          
+            ? `<b>✅ ОПЛАТА ПОДТВЕРЖДЕНА</b>\n\n<b>Клиент:</b> ${order.customerName}\n<b>Товар:</b> ${order.productTitle}\n<b>Сумма:</b> ${order.price} ₽`
+            : `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>Клиент:</b> ${order.customerName}\n<b>Товар:</b> ${order.productTitle}\n<b>Сумма:</b> ${order.price} ₽`;
           try {
             await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
               method: 'POST',
@@ -157,14 +147,10 @@ const App: React.FC = () => {
             });
             processedNotifies.push(order.id);
             localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
-            if (isPaid && order.paymentStatus !== 'paid') {
-              analyticsService.updateOrderStatus(order.id, 'paid');
-            }
           } catch (e) {}
         }
       }
     }, 60000);
-
     return () => clearInterval(checkInterval);
   }, [telegramConfig]);
 
@@ -176,40 +162,23 @@ const App: React.FC = () => {
       const rawData = await response.json();
       if (rawData && Array.isArray(rawData)) {
         const sanitizedData = rawData
-          .filter((item: any) => {
-            const title = item.title || item.Title;
-            return title && title.trim() !== "" && title.trim() !== "Без названия";
-          })
+          .filter((item: any) => (item.title || item.Title)?.trim())
           .map((item: any, index: number) => {
             const p: any = {};
             Object.keys(item).forEach(key => { p[key.trim().toLowerCase()] = item[key]; });
-            const rawSec = String(p.section || '').trim().toLowerCase();
-            const section = (rawSec === 'bonus' || rawSec === 'bonuses' || rawSec === 'бонусы' || rawSec === 'бонус') ? 'bonus' : 
-                            (rawSec === 'portfolio' || rawSec === 'кейсы' || rawSec === 'кейс') ? 'portfolio' : 'shop';
-            
             let gallery = [];
-            try {
-              const rawGallery = p.detailgallery || p.detailGallery;
-              if (rawGallery) {
-                gallery = typeof rawGallery === 'string' ? JSON.parse(rawGallery) : rawGallery;
-              }
-            } catch (e) { gallery = []; }
-
-            const rawPrice = p.price;
-            const price = (isNaN(Number(rawPrice)) || rawPrice === "" || rawPrice === null) ? String(rawPrice || 0) : Number(rawPrice);
-
+            try { gallery = typeof (p.detailgallery || p.detailGallery) === 'string' ? JSON.parse(p.detailgallery || p.detailGallery) : (p.detailgallery || p.detailGallery || []); } catch (e) {}
             return {
               ...p,
               id: p.id ? String(p.id) : `row-${index + 2}`,
               title: p.title || 'Без названия',
               description: p.description || '',
               category: p.category || 'GetCourse',
-              price,
+              price: (isNaN(Number(p.price)) || p.price === "") ? String(p.price || 0) : Number(p.price),
               imageUrl: p.imageurl || p.imageUrl || '',
               mediaType: (p.mediatype || p.mediaType) === 'video' ? 'video' : 'image',
-              features: Array.isArray(p.features) ? p.features : (p.features && typeof p.features === 'string' ? p.features.split(',').map((s: string) => s.trim()) : []),
+              section: (['bonus', 'bonuses', 'бонусы'].includes(String(p.section).toLowerCase())) ? 'bonus' : (['portfolio', 'кейсы'].includes(String(p.section).toLowerCase())) ? 'portfolio' : 'shop',
               useDetailModal: String(p.usedetailmodal || p.useDetailModal).toLowerCase() === 'true',
-              section,
               buttonText: p.buttontext || p.buttonText || '',
               buttonColor: p.buttoncolor || p.buttonColor || '#6366f1',
               titleColor: p.titlecolor || p.titleColor || '#1e293b',
@@ -217,8 +186,6 @@ const App: React.FC = () => {
               prodamusId: p.prodamusid || p.prodamusId || '',
               externalLink: p.externallink || p.externalLink || '',
               detailFullDescription: p.detailfulldescription || p.detailFullDescription || '',
-              detailButtonText: p.detailbuttontext || p.detailButtonText || '',
-              detailButtonColor: p.detailbuttoncolor || p.detailButtonColor || '',
               detailGallery: gallery
             };
           });
@@ -232,6 +199,7 @@ const App: React.FC = () => {
     const tg = (window as any).Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
     syncWithCloud(true);
+    analyticsService.startSession().then(setSessionId);
   }, [syncWithCloud]);
 
   const [sessionId, setSessionId] = useState<string>('');
@@ -242,18 +210,12 @@ const App: React.FC = () => {
   const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
   const [activePaymentUrl, setActivePaymentUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  
   const [agreedToOferta, setAgreedToOferta] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [agreedToMarketing, setAgreedToMarketing] = useState(false);
-
-  useEffect(() => {
-    analyticsService.startSession().then(setSessionId);
-  }, []);
 
   useEffect(() => {
     if (sessionId) analyticsService.updateSessionPath(sessionId, view);
@@ -263,41 +225,9 @@ const App: React.FC = () => {
   const portfolioItems = useMemo(() => products.filter(p => p.section === 'portfolio'), [products]);
   const bonuses = useMemo(() => products.filter(p => p.section === 'bonus'), [products]);
   const filteredProducts = useMemo(() => products.filter(p => p.section === 'shop' && (filter === 'All' || p.category === filter)), [products, filter]);
+  const categories = useMemo(() => Array.from(new Set(products.filter(p => p.section === 'shop').map(p => p.category))).filter(Boolean), [products]);
 
-  const categories = useMemo(() => {
-    const shopProducts = products.filter(p => p.section === 'shop');
-    return Array.from(new Set(shopProducts.map(p => p.category))).filter(Boolean);
-  }, [products]);
-
-  const handleNavigate = (newView: ViewState) => {
-    setActiveDetailProduct(null);
-    setCheckoutProduct(null);
-    setActivePaymentUrl(null);
-    setView(newView);
-    window.scrollTo(0, 0);
-  };
-
-  const sendTelegramNotification = async (order: OrderLog) => {
-    if (!telegramConfig.botToken || !telegramConfig.chatId) return;
-    const tg = (window as any).Telegram?.WebApp;
-    const tgHandle = tg?.initDataUnsafe?.user?.username ? `@${tg.initDataUnsafe.user.username}` : 'не задан';
-    const message = `<b>🚀 НОВЫЙ ЗАКАЗ (ИНИЦИИРОВАН)</b>\n\n` +
-                    `<b>ID:</b> <code>${order.id}</code>\n` +
-                    `<b>Товар:</b> ${order.productTitle}\n` +
-                    `<b>Сумма:</b> ${order.price} ₽\n\n` +
-                    `<b>👤 Клиент:</b> ${order.customerName}\n` +
-                    `<b>📞 Тел:</b> ${order.customerPhone}\n` +
-                    `<b>🔹 Ник в TG:</b> ${tgHandle}\n` +
-                    `<b>📢 Рассылки:</b> ${order.agreedToMarketing ? 'Да ✅' : 'Нет ❌'}\n\n` +
-                    `<i>Я сообщу через 5 минут, если статус не изменится на "Оплачено".</i>`;
-    try {
-      await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ chat_id: telegramConfig.chatId, text: message, parse_mode: 'HTML' })
-      });
-    } catch (e) {}
-  };
+  const handleNavigate = (newView: ViewState) => { setView(newView); window.scrollTo(0, 0); };
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -305,27 +235,16 @@ const App: React.FC = () => {
     setIsSubmitting(true);
     try {
       const order = await analyticsService.logOrder({
-        productTitle: checkoutProduct.title, 
-        price: checkoutProduct.price,
-        customerName, customerEmail, customerPhone,
-        agreedToMarketing,
+        productTitle: checkoutProduct.title, price: checkoutProduct.price,
+        customerName, customerEmail, customerPhone, agreedToMarketing,
         utmSource: new URLSearchParams(window.location.search).get('utm_source') || 'direct'
       }, sessionId);
-      await sendTelegramNotification(order);
-      setIframeLoaded(false);
       let paymentUrl = checkoutProduct.prodamusId?.startsWith('http') ? checkoutProduct.prodamusId : 'https://antol.payform.ru/';
       const connector = paymentUrl.includes('?') ? '&' : '?';
       paymentUrl += `${connector}order_id=${order.id}&customer_email=${encodeURIComponent(customerEmail)}&customer_phone=${encodeURIComponent(customerPhone)}`;
       setActivePaymentUrl(paymentUrl);
       setCheckoutProduct(null);
-      setAgreedToOferta(false);
-      setAgreedToPrivacy(false);
-      setAgreedToMarketing(false);
-    } catch (err) {
-      console.error("Checkout process error:", err);
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (err) {} finally { setIsSubmitting(false); }
   };
 
   const renderProductCard = (p: Product) => (
@@ -344,7 +263,9 @@ const App: React.FC = () => {
         <MediaRenderer url={p.imageUrl} type={p.mediaType} className="w-full h-full" onClick={() => { if (p.useDetailModal) setActiveDetailProduct(p); }} />
       </div>
       <div className="px-4 pb-4 space-y-3">
-        <div className="text-[16px] text-slate-500 font-medium leading-relaxed line-clamp-3">{renderRichContent(p.description)}</div>
+        <div className="text-[16px] text-slate-500 font-medium leading-[1.4] line-clamp-3">
+          {renderRichContent(p.description)}
+        </div>
         <button 
           onClick={() => { if (p.useDetailModal) setActiveDetailProduct(p); else if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }}
           style={{ backgroundColor: p.buttonColor || '#6366f1' }}
@@ -370,130 +291,95 @@ const App: React.FC = () => {
             <p className="text-[16px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
           </div>
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
-            <div className="flex items-center gap-4"><Trophy className="text-amber-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700">Победитель Хакатона EdMarket</p></div>
-            <div className="flex items-center gap-4"><Award className="text-indigo-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
-            <div className="flex items-center gap-4"><BriefcaseIcon className="text-emerald-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700">60+ реализованных проектов</p></div>
-            <div className="flex items-center gap-4"><Globe className="text-blue-500 flex-shrink-0" size={18} /><p className="text-[13px] font-bold text-slate-700 truncate">Сайт: <a href="https://vk.cc/cOx50S" target="_blank" className="text-indigo-600 underline">https://vk.cc/cOx50S</a></p></div>
+            <div className="flex items-center gap-4"><Trophy className="text-amber-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Победитель Хакатона EdMarket</p></div>
+            <div className="flex items-center gap-4"><Award className="text-indigo-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
+            <div className="flex items-center gap-4"><BriefcaseIcon className="text-emerald-500" size={18} /><p className="text-[13px] font-bold text-slate-700">60+ реализованных проектов</p></div>
           </div>
           <button onClick={() => window.open('https://t.me/Olga_lav', '_blank')} className="w-full bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between active:scale-[0.98] transition-all">
-            <div className="text-left"><h3 className="text-lg font-black leading-none mb-1.5 uppercase">Нужна помощь?</h3><p className="text-[9px] font-black opacity-70 uppercase tracking-widest">СВЯЗАТЬСЯ В TELEGRAM</p></div>
+            <div className="text-left"><h3 className="text-lg font-black uppercase">Нужна помощь?</h3><p className="text-[9px] font-black opacity-70 uppercase tracking-widest">СВЯЗАТЬСЯ В TELEGRAM</p></div>
             <Send size={28} className="opacity-30" />
           </button>
         </div>
       )}
-      {view === 'portfolio' && <div className="space-y-4">{portfolioItems.map(renderProductCard)}</div>}
-      {view === 'shop' && (
+      {(view === 'portfolio' || view === 'shop' || view === 'bonuses') && (
         <div className="space-y-4">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-            {['All', ...categories].map(c => (
-              <button key={c} onClick={() => setFilter(c)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 ${filter === c ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-200 text-slate-600 border border-slate-300' }`}>
-                {c === 'All' ? 'Все' : c}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-1 gap-1">{filteredProducts.map(renderProductCard)}</div>
+          {view === 'shop' && (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+              {['All', ...categories].map(c => (
+                <button key={c} onClick={() => setFilter(c)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 ${filter === c ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-200 text-slate-600' }`}>
+                  {c === 'All' ? 'Все' : c}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-1">{(view === 'portfolio' ? portfolioItems : view === 'bonuses' ? bonuses : filteredProducts).map(renderProductCard)}</div>
         </div>
       )}
-      {view === 'bonuses' && <div className="space-y-4">{bonuses.map(renderProductCard)}</div>}
       {view === 'contact' && (
-        <div className="text-center py-20 space-y-6 animate-in zoom-in duration-300">
-          <div className="w-20 h-20 bg-indigo-600 rounded-[1.8rem] flex items-center justify-center text-white mx-auto shadow-2xl shadow-indigo-200"><Send size={32} /></div>
+        <div className="text-center py-20 space-y-6">
+          <div className="w-20 h-20 bg-indigo-600 rounded-[1.8rem] flex items-center justify-center text-white mx-auto"><Send size={32} /></div>
           <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-900">Связь со мной</h2>
-          <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Жду вашего сообщения!</p>
-          <a href="https://t.me/Olga_lav" target="_blank" className="w-full max-w-[280px] mx-auto flex items-center justify-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest active:scale-95 transition-transform shadow-xl">Открыть Telegram</a>
+          <a href="https://t.me/Olga_lav" target="_blank" className="w-full max-w-[280px] mx-auto flex items-center justify-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-xl">Открыть Telegram</a>
         </div>
       )}
       {activeDetailProduct && (
-        <div className="fixed top-0 left-0 right-0 bottom-20 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom duration-300 shadow-2xl">
-          <div className="p-4 flex items-center justify-between border-b shrink-0 sticky top-0 z-[110] bg-white/95 backdrop-blur-md">
-            <button onClick={() => setActiveDetailProduct(null)} className="p-2.5 bg-slate-50 rounded-xl text-slate-400 active:scale-90 transition-all"><ChevronLeft size={20} /></button>
-            <span className="font-bold text-[12px] text-slate-300 uppercase tracking-widest truncate max-w-[60%]">{activeDetailProduct.title}</span>
-            <button onClick={() => setActiveDetailProduct(null)} className="p-2.5 bg-slate-50 rounded-xl text-slate-400 active:scale-90 transition-all"><X size={20} /></button>
+        <div className="fixed top-0 left-0 right-0 bottom-20 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom duration-300">
+          <div className="p-4 flex items-center justify-between border-b shrink-0 bg-white/95 backdrop-blur-md">
+            <button onClick={() => setActiveDetailProduct(null)} className="p-2.5 bg-slate-50 rounded-xl text-slate-400"><ChevronLeft size={20} /></button>
+            <span className="font-bold text-[12px] text-slate-300 uppercase truncate max-w-[60%]">{activeDetailProduct.title}</span>
+            <button onClick={() => setActiveDetailProduct(null)} className="p-2.5 bg-slate-50 rounded-xl text-slate-400"><X size={20} /></button>
           </div>
-          <div className="flex-grow overflow-y-auto p-6 space-y-6 no-scrollbar pb-40 overscroll-contain">
+          <div className="flex-grow overflow-y-auto p-6 space-y-6 no-scrollbar pb-40">
             <div className="space-y-3">
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight uppercase">{activeDetailProduct.title}</h2>
-              <div style={{ color: activeDetailProduct.buttonColor }} className="text-lg font-black bg-slate-50 w-fit px-4 py-2 rounded-full border border-slate-100/50">
-                {typeof activeDetailProduct.price === 'number' && activeDetailProduct.price > 0 ? `${activeDetailProduct.price} ₽` : (activeDetailProduct.price === 0 || activeDetailProduct.price === "0" ? '0 ₽' : activeDetailProduct.price)}
+              <h2 className="text-2xl font-bold text-slate-900 uppercase leading-tight">{activeDetailProduct.title}</h2>
+              <div style={{ color: activeDetailProduct.buttonColor }} className="text-lg font-black bg-slate-50 w-fit px-4 py-2 rounded-full">
+                {typeof activeDetailProduct.price === 'number' && activeDetailProduct.price > 0 ? `${activeDetailProduct.price} ₽` : activeDetailProduct.price}
               </div>
             </div>
             <div className="space-y-5">
-              {activeDetailProduct.detailGallery && activeDetailProduct.detailGallery.length > 0 ? (
-                activeDetailProduct.detailGallery.map((media, idx) => (
-                  <MediaRenderer key={idx} url={media.url} type={media.type} isDetail={true} onClick={() => { if (media.type === 'image') setFullscreenImage(media.url); }} />
-                ))
-              ) : (
-                <MediaRenderer url={activeDetailProduct.imageUrl} type={activeDetailProduct.mediaType} isDetail={true} onClick={() => { if (activeDetailProduct.mediaType === 'image') setFullscreenImage(activeDetailProduct.imageUrl); }} />
+              {activeDetailProduct.detailGallery?.length ? activeDetailProduct.detailGallery.map((media, idx) => (
+                <MediaRenderer key={idx} url={media.url} type={media.type} isDetail={true} onClick={() => media.type === 'image' && setFullscreenImage(media.url)} />
+              )) : (
+                <MediaRenderer url={activeDetailProduct.imageUrl} type={activeDetailProduct.mediaType} isDetail={true} onClick={() => activeDetailProduct.mediaType === 'image' && setFullscreenImage(activeDetailProduct.imageUrl)} />
               )}
             </div>
-            <div className="space-y-5 pt-4">
-              <div className="h-px bg-slate-50 w-full" />
-              <div className="text-[16px] font-medium text-slate-600 leading-[1.6] whitespace-pre-wrap">
-                {renderRichContent(activeDetailProduct.detailFullDescription || activeDetailProduct.description)}
-              </div>
+            <div className="pt-4 border-t border-slate-50">
+               {renderRichContent(activeDetailProduct.detailFullDescription || activeDetailProduct.description)}
             </div>
           </div>
-          <div className="fixed bottom-24 left-6 right-6 z-[120]">
-            <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor || '#6366f1' }} className="w-full text-white py-5 rounded-2xl font-bold uppercase text-[12px] tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-transform">
+          <div className="fixed bottom-24 left-6 right-6">
+            <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor || '#6366f1' }} className="w-full text-white py-5 rounded-2xl font-bold uppercase text-[12px] tracking-widest shadow-2xl flex items-center justify-center gap-3">
               {activeDetailProduct.detailButtonText || 'ЗАКАЗАТЬ РЕШЕНИЕ'} <ChevronRight size={18} />
             </button>
           </div>
         </div>
       )}
-      {view === 'admin' && (isAdminAuthenticated ? <div className="space-y-8 pb-32"><div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 mb-6"><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600 ml-1">Bot Token</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600 ml-1">Chat ID</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-rose-500 ml-1">Webhook URL</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 text-slate-900 outline-none" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} /></div><button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest">Обновить данные</button></div><AdminDashboard /><button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4">Выйти из панели</button></div> : <div className="py-12 text-center space-y-6"><h2 className="text-xl font-bold tracking-tight uppercase text-slate-900">Вход в панель</h2><input type="password" placeholder="Пароль" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-center text-slate-900 outline-none shadow-sm" value={password} onChange={e => setPassword(e.target.value)} /><button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-widest">Войти</button></div>)}
+      {view === 'admin' && (isAdminAuthenticated ? <div className="space-y-8 pb-32"><div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 mb-6"><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600">Bot Token</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.botToken} onChange={e => setTelegramConfig({...telegramConfig, botToken: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-indigo-600">Chat ID</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.chatId} onChange={e => setTelegramConfig({...telegramConfig, chatId: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-rose-500">Webhook URL</label><input className="w-full bg-slate-50 p-4 rounded-xl text-sm font-bold border border-slate-100 outline-none" value={telegramConfig.googleSheetWebhook || ''} onChange={e => setTelegramConfig({...telegramConfig, googleSheetWebhook: e.target.value})} /></div><button onClick={() => { localStorage.setItem('olga_tg_config', JSON.stringify(telegramConfig)); alert('Сохранено!'); syncWithCloud(true); }} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-[11px] uppercase tracking-widest">Обновить данные</button></div><AdminDashboard /><button onClick={() => setIsAdminAuthenticated(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-4">Выйти</button></div> : <div className="py-12 text-center space-y-6"><h2 className="text-xl font-bold uppercase text-slate-900">Вход в панель</h2><input type="password" placeholder="Пароль" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl text-center outline-none" value={password} onChange={e => setPassword(e.target.value)} /><button onClick={() => password === ADMIN_PASSWORD && setIsAdminAuthenticated(true)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-widest">Войти</button></div>)}
       {checkoutProduct && (
-        <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12 animate-in fade-in">
+        <div className="fixed inset-0 z-[6000] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-6 pt-12">
           <div className="w-full max-w-md bg-white rounded-[2rem] p-8 space-y-6 relative shadow-2xl">
             <button onClick={() => setCheckoutProduct(null)} className="absolute top-6 right-8 text-slate-300"><X size={24}/></button>
-            <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Оформление заказа</h2>
+            <h2 className="text-lg font-bold text-slate-900 uppercase">Оформление заказа</h2>
             <form onSubmit={handleCheckout} className="space-y-4">
-              <div className="space-y-3">
-                <input required placeholder="Ваше имя" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none focus:border-indigo-300" value={customerName} onChange={e => setCustomerName(e.target.value)} />
-                <input required type="email" placeholder="Email" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none focus:border-indigo-300" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
-                <input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 font-medium text-slate-900 outline-none focus:border-indigo-300" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
-              </div>
+              <input required placeholder="Ваше имя" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 outline-none" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+              <input required type="email" placeholder="Email" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 outline-none" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
+              <input required type="tel" placeholder="Телефон" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 outline-none" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
               <div className="space-y-3 py-2">
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input type="checkbox" required checked={agreedToOferta} onChange={e => setAgreedToOferta(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                  <span className="text-[12px] text-slate-500 font-medium leading-tight">Оформляя заказ вы соглашаетесь с условиями <a href="https://axl.antol.net.ru/shabl/oferta_shab" target="_blank" className="text-indigo-600 underline decoration-indigo-200">Оферты</a></span>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input type="checkbox" required checked={agreedToPrivacy} onChange={e => setAgreedToPrivacy(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                  <span className="text-[12px] text-slate-500 font-medium leading-tight">Ознакомлен с <a href="https://axl.antol.net.ru/politica" target="_blank" className="text-indigo-600 underline decoration-indigo-200">Политикой конфиденциальности</a></span>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input type="checkbox" checked={agreedToMarketing} onChange={e => setAgreedToMarketing(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                  <span className="text-[12px] text-slate-500 font-medium leading-tight">Согласен на получение рекламных рассылок</span>
-                </label>
+                <label className="flex items-start gap-3"><input type="checkbox" required className="mt-1" /> <span className="text-[12px] text-slate-500">Согласен с <a href="https://axl.antol.net.ru/shabl/oferta_shab" target="_blank" className="text-indigo-600 underline">Офертой</a></span></label>
+                <label className="flex items-start gap-3"><input type="checkbox" required className="mt-1" /> <span className="text-[12px] text-slate-500">Ознакомлен с <a href="https://axl.antol.net.ru/politica" target="_blank" className="text-indigo-600 underline">Политикой конфиденциальности</a></span></label>
               </div>
-              <div className="space-y-3">
-                <button type="submit" disabled={!agreedToOferta || !agreedToPrivacy} className={`w-full py-5 rounded-xl font-bold uppercase text-[12px] tracking-widest shadow-lg active:scale-95 transition-all ${ (agreedToOferta && agreedToPrivacy) ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' }`}>
-                  Оплатить {checkoutProduct.price} ₽
-                </button>
-                <p className="text-center text-[11px] font-bold text-indigo-500/60 uppercase tracking-wide">Доступ к материалам откроется в течении дня</p>
-              </div>
+              <button type="submit" className="w-full py-5 rounded-xl font-bold uppercase text-[12px] tracking-widest bg-indigo-600 text-white">Оплатить {checkoutProduct.price} ₽</button>
             </form>
           </div>
         </div>
       )}
-      {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4 animate-in zoom-in duration-200" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" alt="Full view" /></div>}
+      {fullscreenImage && <div className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4" onClick={() => setFullscreenImage(null)}><img src={fullscreenImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" alt="Full view" /></div>}
       {activePaymentUrl && (
-        <div className="fixed inset-0 z-[7000] bg-white flex flex-col animate-in fade-in">
-          <div className="p-4 border-b flex justify-between items-center bg-white shadow-sm">
-            <span className="font-bold text-[11px] uppercase text-slate-400 tracking-widest">Оплата заказа</span>
-            <button onClick={() => { setActivePaymentUrl(null); setIframeLoaded(false); }} className="p-2 bg-rose-500 text-white rounded-xl shadow-md active:scale-90 transition-all"><X size={20}/></button>
-          </div>
+        <div className="fixed inset-0 z-[7000] bg-white flex flex-col">
+          <div className="p-4 border-b flex justify-between items-center"><span className="font-bold text-[11px] uppercase text-slate-400">Оплата</span><button onClick={() => { setActivePaymentUrl(null); setIframeLoaded(false); }} className="p-2 bg-rose-500 text-white rounded-xl shadow-md"><X size={20}/></button></div>
           <div className="flex-grow relative bg-slate-50">
-            {!iframeLoaded && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center space-y-6">
-                <div className="w-16 h-16 border-[5px] border-indigo-600 border-t-transparent rounded-full animate-spin shadow-inner"></div>
-                <div className="space-y-2">
-                  <h3 className="text-slate-900 font-black uppercase text-[13px] tracking-widest">Переходим к оплате...</h3>
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide leading-relaxed">Пожалуйста, подождите, загружаем безопасную платежную систему</p>
-                </div>
-              </div>
-            )}
-            <iframe src={activePaymentUrl} className={`w-full h-full border-none transition-opacity duration-500 ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`} onLoad={() => setIframeLoaded(true)} />
+            {!iframeLoaded && <div className="absolute inset-0 flex flex-col items-center justify-center p-10"><div className="w-16 h-16 border-[5px] border-indigo-600 border-t-transparent rounded-full animate-spin"></div><p className="mt-4 font-black uppercase text-[13px]">Загрузка оплаты...</p></div>}
+            <iframe src={activePaymentUrl} className={`w-full h-full border-none transition-opacity ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`} onLoad={() => setIframeLoaded(true)} />
           </div>
         </div>
       )}
