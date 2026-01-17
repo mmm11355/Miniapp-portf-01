@@ -40,80 +40,16 @@ const App: React.FC = () => {
     };
   });
 
-  const MediaRenderer: React.FC<{ url: string; type: 'image' | 'video'; className?: string; onClick?: () => void; isDetail?: boolean }> = ({ url, type, className, onClick, isDetail }) => {
-    if (!url) return null;
-    const isDirectVideo = url.match(/\.(mp4|webm|mov|gif|m4v|avi)$/i);
-    const isRutube = url.includes('rutube.ru');
-    const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
-    if (isRutube || isYoutube) {
-      let embedUrl = url;
-      if (isRutube) {
-        if (url.includes('/video/')) embedUrl = url.replace('/video/', '/play/embed/');
-        else if (!url.includes('/play/embed/')) {
-          const id = url.split('/').filter(Boolean).pop();
-          embedUrl = `https://rutube.ru/play/embed/${id}/`;
-        }
-      } else if (isYoutube) {
-        if (url.includes('watch?v=')) embedUrl = url.replace('watch?v=', 'embed/');
-        else if (url.includes('youtu.be/')) embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
-      }
-      return (
-        <div className={`relative w-full aspect-video overflow-hidden shadow-sm bg-black ${isDetail ? 'rounded-2xl' : 'rounded-lg'}`}>
-          <iframe src={embedUrl} className="w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen></iframe>
-        </div>
-      );
+  const parseSafeDate = (dateVal: any): number => {
+    if (!dateVal) return 0;
+    if (typeof dateVal === 'number') return dateVal;
+    // Если это строка типа 16.01.2026
+    if (typeof dateVal === 'string' && dateVal.includes('.')) {
+      const [d, m, y] = dateVal.split('.').map(Number);
+      return new Date(y, m - 1, d).getTime();
     }
-    if (type === 'video' || isDirectVideo) {
-      return (
-        <div className={`relative w-full overflow-hidden ${isDetail ? 'rounded-2xl bg-black shadow-sm' : 'h-full'}`} onClick={onClick}>
-          <video src={url} className={isDetail ? 'w-full h-auto max-h-[65vh] mx-auto' : className} autoPlay muted loop playsInline preload="auto" style={{ objectFit: isDetail ? 'contain' : 'cover' }} />
-          {!isDetail && <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none"><PlayCircle size={36} className="text-white opacity-40" /></div>}
-        </div>
-      );
-    }
-    return <img src={url} className={`${isDetail ? 'w-full h-auto rounded-2xl shadow-sm mx-auto' : className}`} alt="" onClick={onClick} style={{ objectFit: isDetail ? 'contain' : 'cover', cursor: isDetail ? 'zoom-in' : 'pointer' }} />;
-  };
-
-  const renderRichContent = (text: string) => {
-    if (!text) return null;
-    const parts = text.split(/(\[\[(?:image|video):[^\]]+\]\])/g);
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-
-    return (
-      <div className="text-[16px] font-medium text-slate-600 leading-[1.4] whitespace-pre-wrap">
-        {parts.map((part, i) => {
-          const mediaMatch = part.match(/\[\[(image|video):([^\]]+)\]\]/);
-          if (mediaMatch) {
-            const [_, type, url] = mediaMatch;
-            const mediaUrl = url.trim();
-            return (
-              <div key={i} className="my-6 block">
-                <MediaRenderer 
-                  url={mediaUrl} 
-                  type={type as 'image' | 'video'} 
-                  isDetail={true} 
-                  onClick={() => type === 'image' && setFullscreenImage(mediaUrl)} 
-                />
-              </div>
-            );
-          }
-          return (
-            <React.Fragment key={i}>
-              {part.split(urlRegex).map((subPart, j) => {
-                if (subPart.match(urlRegex)) {
-                  return (
-                    <a key={j} href={subPart} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 break-all font-bold">
-                      {subPart}
-                    </a>
-                  );
-                }
-                return subPart;
-              })}
-            </React.Fragment>
-          );
-        })}
-      </div>
-    );
+    const parsed = Date.parse(dateVal);
+    return isNaN(parsed) ? 0 : parsed;
   };
 
   useEffect(() => {
@@ -135,7 +71,7 @@ const App: React.FC = () => {
         let cloudOrders: any[] = [];
         if (telegramConfig.googleSheetWebhook) {
           try {
-            const res = await fetch(`${telegramConfig.googleSheetWebhook}?action=getStats&_t=${now}`);
+            const res = await fetch(`${telegramConfig.googleSheetWebhook}?action=getStats&_t=${Date.now()}`, { cache: 'no-store' });
             const data = await res.json();
             if (data.status === 'success') cloudOrders = data.orders || [];
           } catch (e) { console.warn("Monitoring: Cloud Fetch Fail", e); }
@@ -143,7 +79,7 @@ const App: React.FC = () => {
 
         const sanitize = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        // ГЛОБАЛЬНЫЙ МОНИТОРИНГ: Проверяем и локальные, и облачные заказы
+        // Объединяем заказы для проверки
         const allOrdersToCheck = [...localOrders];
         cloudOrders.forEach(co => {
           if (!allOrdersToCheck.find(lo => lo.id === co.id)) {
@@ -152,65 +88,44 @@ const App: React.FC = () => {
         });
 
         for (const order of allOrdersToCheck) {
-          // Ищем актуальный статус в облаке (если он там есть)
           const cloudInfo = cloudOrders.find((co: any) => co.id === order.id);
           const currentStatus = cloudInfo?.paymentStatus || order.paymentStatus;
-          const isPaid = currentStatus === 'paid';
+          const isPaid = currentStatus === 'paid' || currentStatus === 'Оплачено';
+          const isFailed = currentStatus === 'failed' || currentStatus === 'Отменено';
+          
+          const orderTime = parseSafeDate(cloudInfo?.timestamp || order.timestamp);
+          
+          if (orderTime === 0) continue;
 
-          // ЕСЛИ ПРОШЛО 10 МИНУТ И ВСЁ ЕЩЁ ОЖИДАНИЕ
-          if (!isPaid && currentStatus === 'pending' && (now - order.timestamp) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
-            // Сразу шлем команду на отмену в Google Таблицу и обновляем локально
+          // Если прошло больше 10 минут и статус всё ещё "ожидание"
+          if (!isPaid && !isFailed && currentStatus.toLowerCase().includes('ожидание') && (now - orderTime) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
+            // МГНОВЕННОЕ ДЕЙСТВИЕ
             await analyticsService.updateOrderStatus(order.id, 'failed');
             processedCancelled.push(order.id);
             localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
 
             if (telegramConfig.botToken && telegramConfig.chatId) {
-              const cancelMsg = `<b>🔴 ЗАКАЗ ОТМЕНЕН (AUTO-ARCHIVE)</b>\n\n` +
+              const cancelMsg = `<b>🔴 АВТО-АРХИВ (10 МИН+)</b>\n\n` +
                                 `<b>ID:</b> <code>${order.id}</code>\n` +
-                                `<b>Клиент:</b> ${sanitize(order.customerName)}\n` +
                                 `<b>Товар:</b> ${sanitize(order.productTitle)}\n` +
-                                `<b>Сумма:</b> ${order.price} ₽\n\n` +
-                                `<i>Заказ перенесен в архив из-за отсутствия оплаты дольше 10 мин.</i>`;
+                                `<b>Дата:</b> ${new Date(orderTime).toLocaleDateString()}\n\n` +
+                                `<i>Статус изменен на "Отменено".</i>`;
               fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: telegramConfig.chatId, text: cancelMsg, parse_mode: 'HTML' })
-              }).catch(e => console.error("Monitoring: Cancel Notify Failed", e));
+              }).catch(e => {});
             }
-            continue;
-          }
-
-          // ЕСЛИ ПРОШЛО 5 МИНУТ
-          if (!isPaid && currentStatus === 'pending' && (now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
-            if (telegramConfig.botToken && telegramConfig.chatId) {
-              const message = `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>ID:</b> <code>${order.id}</code>\n<b>Клиент:</b> ${sanitize(order.customerName)}\n<b>Товар:</b> ${sanitize(order.productTitle)}`;
-              fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: telegramConfig.chatId, text: message, parse_mode: 'HTML' })
-              }).then(res => {
-                if (res.ok) {
-                  processedNotifies.push(order.id);
-                  localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
-                }
-              }).catch(e => console.error("Monitoring: Pending Notify Failed", e));
-            }
-          }
-
-          // Синхронизируем статус оплаты, если в облаке оплачено, а у нас нет
-          if (isPaid && order.paymentStatus !== 'paid') {
-            await analyticsService.updateOrderStatus(order.id, 'paid');
           }
         }
       } catch (globalError) {
-        console.error("Monitoring: Critical Error", globalError);
       } finally {
         isProcessingRef.current = false;
       }
     };
 
     monitorOrders();
-    const checkInterval = setInterval(monitorOrders, 60000); 
+    const checkInterval = setInterval(monitorOrders, 30000); // Проверка каждые 30 сек
     return () => clearInterval(checkInterval);
   }, [telegramConfig]);
 
@@ -317,6 +232,82 @@ const App: React.FC = () => {
       setActivePaymentUrl(paymentUrl);
       setCheckoutProduct(null);
     } catch (err) {} finally { setIsSubmitting(false); }
+  };
+
+  const MediaRenderer: React.FC<{ url: string; type: 'image' | 'video'; className?: string; onClick?: () => void; isDetail?: boolean }> = ({ url, type, className, onClick, isDetail }) => {
+    if (!url) return null;
+    const isDirectVideo = url.match(/\.(mp4|webm|mov|gif|m4v|avi)$/i);
+    const isRutube = url.includes('rutube.ru');
+    const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
+    if (isRutube || isYoutube) {
+      let embedUrl = url;
+      if (isRutube) {
+        if (url.includes('/video/')) embedUrl = url.replace('/video/', '/play/embed/');
+        else if (!url.includes('/play/embed/')) {
+          const id = url.split('/').filter(Boolean).pop();
+          embedUrl = `https://rutube.ru/play/embed/${id}/`;
+        }
+      } else if (isYoutube) {
+        if (url.includes('watch?v=')) embedUrl = url.replace('watch?v=', 'embed/');
+        else if (url.includes('youtu.be/')) embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
+      }
+      return (
+        <div className={`relative w-full aspect-video overflow-hidden shadow-sm bg-black ${isDetail ? 'rounded-2xl' : 'rounded-lg'}`}>
+          <iframe src={embedUrl} className="w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen></iframe>
+        </div>
+      );
+    }
+    if (type === 'video' || isDirectVideo) {
+      return (
+        <div className={`relative w-full overflow-hidden ${isDetail ? 'rounded-2xl bg-black shadow-sm' : 'h-full'}`} onClick={onClick}>
+          <video src={url} className={isDetail ? 'w-full h-auto max-h-[65vh] mx-auto' : className} autoPlay muted loop playsInline preload="auto" style={{ objectFit: isDetail ? 'contain' : 'cover' }} />
+          {!isDetail && <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none"><PlayCircle size={36} className="text-white opacity-40" /></div>}
+        </div>
+      );
+    }
+    return <img src={url} className={`${isDetail ? 'w-full h-auto rounded-2xl shadow-sm mx-auto' : className}`} alt="" onClick={onClick} style={{ objectFit: isDetail ? 'contain' : 'cover', cursor: isDetail ? 'zoom-in' : 'pointer' }} />;
+  };
+
+  const renderRichContent = (text: string) => {
+    if (!text) return null;
+    const parts = text.split(/(\[\[(?:image|video):[^\]]+\]\])/g);
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+    return (
+      <div className="text-[16px] font-medium text-slate-600 leading-[1.4] whitespace-pre-wrap">
+        {parts.map((part, i) => {
+          const mediaMatch = part.match(/\[\[(image|video):([^\]]+)\]\]/);
+          if (mediaMatch) {
+            const [_, type, url] = mediaMatch;
+            const mediaUrl = url.trim();
+            return (
+              <div key={i} className="my-6 block">
+                <MediaRenderer 
+                  url={mediaUrl} 
+                  type={type as 'image' | 'video'} 
+                  isDetail={true} 
+                  onClick={() => type === 'image' && setFullscreenImage(mediaUrl)} 
+                />
+              </div>
+            );
+          }
+          return (
+            <React.Fragment key={i}>
+              {part.split(urlRegex).map((subPart, j) => {
+                if (subPart.match(urlRegex)) {
+                  return (
+                    <a key={j} href={subPart} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 break-all font-bold">
+                      {subPart}
+                    </a>
+                  );
+                }
+                return subPart;
+              })}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    );
   };
 
   const renderProductCard = (p: Product) => (

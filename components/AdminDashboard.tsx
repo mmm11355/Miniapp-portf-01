@@ -1,8 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
-// Add X to imports from lucide-react
-import { RefreshCw, Users, CreditCard, MapPin, ListOrdered, CheckCircle, Clock, User, Archive, Activity, X } from 'lucide-react';
+import { RefreshCw, Users, CreditCard, ListOrdered, CheckCircle, Clock, User, Archive, Activity, X } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -16,7 +15,7 @@ const AdminDashboard: React.FC = () => {
       const config = localStorage.getItem('olga_tg_config');
       if (!config) return;
       const { googleSheetWebhook } = JSON.parse(config);
-      const res = await fetch(`${googleSheetWebhook}?action=getStats&_t=${Date.now()}`);
+      const res = await fetch(`${googleSheetWebhook}?action=getStats&_t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.status === 'success') {
         setSessions(data.sessions || []);
@@ -37,10 +36,27 @@ const AdminDashboard: React.FC = () => {
   }, [sessions]);
 
   const filteredOrders = useMemo(() => {
+    // Получаем список принудительно отмененных локально
+    const cancelledLocal = JSON.parse(localStorage.getItem('olga_processed_cancelled') || '[]');
+
+    const processedOrders = orders.map(o => {
+      // Если заказ помечен как отмененный локально - форсируем статус
+      if (cancelledLocal.includes(o.id)) {
+        return { ...o, paymentStatus: 'failed' };
+      }
+      return o;
+    });
+
     if (activeTab === 'active') {
-      return orders.filter(o => o.paymentStatus !== 'failed');
+      return processedOrders.filter(o => 
+        o.paymentStatus !== 'failed' && 
+        o.paymentStatus !== 'Отменено'
+      );
     }
-    return orders.filter(o => o.paymentStatus === 'failed');
+    return processedOrders.filter(o => 
+      o.paymentStatus === 'failed' || 
+      o.paymentStatus === 'Отменено'
+    );
   }, [orders, activeTab]);
 
   return (
@@ -59,7 +75,7 @@ const AdminDashboard: React.FC = () => {
         </div>
         <div className="bg-[#f8f7ff] p-6 rounded-[2rem] border border-slate-50 shadow-sm space-y-2">
           <div className="flex items-center gap-2 text-emerald-600 mb-2"><CreditCard size={16} /><span className="text-[10px] font-black uppercase tracking-widest">Заказы</span></div>
-          <p className="text-4xl font-black text-slate-900">{orders.filter(o => o.paymentStatus === 'paid').length}</p>
+          <p className="text-4xl font-black text-slate-900">{orders.filter(o => o.paymentStatus === 'paid' || o.paymentStatus === 'Оплачено').length}</p>
         </div>
       </div>
 
@@ -101,42 +117,47 @@ const AdminDashboard: React.FC = () => {
         
         <div className="space-y-3">
           {filteredOrders.length === 0 ? <p className="text-center text-slate-300 py-10 font-bold uppercase text-[10px]">{activeTab === 'active' ? 'Активных заказов нет' : 'Архив пуст'}</p> : 
-            filteredOrders.slice(0, 30).map((o, i) => (
-              <div key={i} className={`bg-white border border-slate-50 p-6 rounded-[2rem] premium-shadow transition-all ${o.paymentStatus === 'failed' ? 'opacity-60 border-rose-50' : 'hover:border-indigo-100'}`}>
-                <div className="flex justify-between items-start mb-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-black text-slate-900">{o.productTitle || 'Товар'}</p>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tight">{o.tgUsername || '@guest'}</span>
-                      <span className="text-[10px] text-slate-300">|</span>
-                      <span className="text-[10px] font-medium text-slate-400">{o.customerName}</span>
+            filteredOrders.slice(0, 30).map((o, i) => {
+              const isPaid = o.paymentStatus === 'paid' || o.paymentStatus === 'Оплачено';
+              const isFailed = o.paymentStatus === 'failed' || o.paymentStatus === 'Отменено';
+              
+              return (
+                <div key={i} className={`bg-white border border-slate-50 p-6 rounded-[2rem] premium-shadow transition-all ${isFailed ? 'opacity-60 border-rose-50' : 'hover:border-indigo-100'}`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-black text-slate-900 line-clamp-1">{o.productTitle || 'Товар'}</p>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tight">{o.tgUsername || '@guest'}</span>
+                        <span className="text-[10px] text-slate-300">|</span>
+                        <span className="text-[10px] font-medium text-slate-400">{o.customerName}</span>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className={`text-sm font-black ${isFailed ? 'text-slate-400' : 'text-indigo-600'}`}>{o.price} ₽</div>
+                      <div className="text-[9px] font-bold text-slate-300 uppercase">{o.dateStr ? o.dateStr.split(',')[0] : ''}</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-black ${o.paymentStatus === 'failed' ? 'text-slate-400' : 'text-indigo-600'}`}>{o.price} ₽</div>
-                    <div className="text-[9px] font-bold text-slate-300 uppercase">{new Date(o.timestamp).toLocaleDateString()}</div>
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-50">
+                    <div className="flex items-center gap-2">
+                      {isPaid ? (
+                        <div className="flex items-center gap-1.5 text-[9px] font-black text-emerald-500 uppercase tracking-wider">
+                          <CheckCircle size={14} /> Оплачено
+                        </div>
+                      ) : isFailed ? (
+                        <div className="flex items-center gap-1.5 text-[9px] font-black text-rose-400 uppercase tracking-wider">
+                          <X size={14} /> Отменено
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 uppercase tracking-wider">
+                          <Clock size={14} /> Ожидание
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">{o.customerPhone}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between pt-3 border-t border-slate-50">
-                  <div className="flex items-center gap-2">
-                    {o.paymentStatus === 'paid' ? (
-                      <div className="flex items-center gap-1.5 text-[9px] font-black text-emerald-500 uppercase tracking-wider">
-                        <CheckCircle size={14} /> Оплачено
-                      </div>
-                    ) : o.paymentStatus === 'failed' ? (
-                      <div className="flex items-center gap-1.5 text-[9px] font-black text-rose-400 uppercase tracking-wider">
-                        <X size={14} /> Отменено
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 uppercase tracking-wider">
-                        <Clock size={14} /> Ожидание
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">{o.customerPhone}</span>
-                </div>
-              </div>
-            ))
+              );
+            })
           }
         </div>
       </div>

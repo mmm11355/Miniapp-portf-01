@@ -83,6 +83,7 @@ export const analyticsService = {
       action: 'log',
       type: 'order',
       sessionId: currentSessionId || globalSessionId || 'unknown',
+      orderId: newOrder.id, // Добавляем ID для связи
       name: `${tgUsername} (${newOrder.customerName})`,
       email: newOrder.customerEmail,
       phone: newOrder.customerPhone,
@@ -92,7 +93,8 @@ export const analyticsService = {
       utmSource: newOrder.utmSource,
       paymentStatus: 'pending',
       agreedToMarketing: newOrder.agreedToMarketing ? 'Да' : 'Нет',
-      dateStr: formatNow()
+      dateStr: formatNow(),
+      timestamp: timestamp // Отправляем чистый timestamp для GAS
     });
     
     return newOrder;
@@ -104,18 +106,16 @@ export const analyticsService = {
     if (idx !== -1) {
       orders[idx].paymentStatus = status;
       localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-      
-      await sendToScript({
-        action: 'log',
-        type: 'path_update',
-        sessionId: globalSessionId || 'unknown',
-        path: `payment_${status}`,
-        paymentStatus: status, // Передаем статус для таблицы
-        orderId: orderId,
-        product: `Статус заказа ${orderId} изменен на ${status === 'paid' ? 'Оплачено' : 'Отменено'} (Пользователь: ${getTgUsername()})`,
-        dateStr: formatNow()
-      });
     }
+    
+    // ВАЖНО: Отправляем команду на ОБНОВЛЕНИЕ существующей строки
+    await sendToScript({
+      action: 'update_status',
+      orderId: orderId,
+      paymentStatus: status,
+      updatedBy: getTgUsername(),
+      dateStr: formatNow()
+    });
   },
 
   startSession: async (): Promise<string> => {
