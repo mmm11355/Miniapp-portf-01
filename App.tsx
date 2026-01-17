@@ -115,7 +115,6 @@ const App: React.FC = () => {
     );
   };
 
-  // МОНИТОРИНГ (Внедрена логика отмены 10 минут)
   useEffect(() => {
     const checkInterval = setInterval(async () => {
       const orders = analyticsService.getOrders();
@@ -136,12 +135,9 @@ const App: React.FC = () => {
         const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
         const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
 
-        // ПРОВЕРКА 10 МИНУТ: АВТО-ОТМЕНА
         if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
-          // 1. Отменяем локально и в таблице
           await analyticsService.updateOrderStatus(order.id, 'failed');
           
-          // 2. Уведомление в TG
           const cancelMsg = `<b>🔴 ЗАКАЗ ОТМЕНЕН (10 МИН)</b>\n\n` +
                             `<b>ID:</b> <code>${order.id}</code>\n` +
                             `<b>Клиент:</b> ${order.customerName}\n` +
@@ -160,7 +156,6 @@ const App: React.FC = () => {
           continue;
         }
 
-        // ПРОВЕРКА 5 МИНУТ: ПРЕДУПРЕЖДЕНИЕ (существующая логика)
         if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
           const message = `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>Клиент:</b> ${order.customerName}\n<b>Товар:</b> ${order.productTitle}\n<b>Сумма:</b> ${order.price} ₽`;
           try {
@@ -174,7 +169,6 @@ const App: React.FC = () => {
           } catch (e) {}
         }
 
-        // Обновляем статус, если оплата пришла в облако
         if (isPaid && order.paymentStatus !== 'paid') {
           analyticsService.updateOrderStatus(order.id, 'paid');
         }
@@ -256,7 +250,14 @@ const App: React.FC = () => {
   const filteredProducts = useMemo(() => products.filter(p => p.section === 'shop' && (filter === 'All' || p.category === filter)), [products, filter]);
   const categories = useMemo(() => Array.from(new Set(products.filter(p => p.section === 'shop').map(p => p.category))).filter(Boolean), [products]);
 
-  const handleNavigate = (newView: ViewState) => { setView(newView); window.scrollTo(0, 0); };
+  // УЛУЧШЕННАЯ НАВИГАЦИЯ: Закрываем все модальные слои при переходе
+  const handleNavigate = (newView: ViewState) => { 
+    setView(newView); 
+    setActiveDetailProduct(null); // Закрываем лонгрид
+    setCheckoutProduct(null);      // Закрываем окно оплаты
+    setFullscreenImage(null);     // Закрываем галерею
+    window.scrollTo(0, 0); 
+  };
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
