@@ -20,25 +20,26 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate }) => 
 
   return (
     <div className="min-h-screen bg-[#f6f8fb] flex flex-col max-w-md mx-auto relative border-x border-slate-50 overflow-x-hidden">
-      {/* Шапка с выделенным фоном */}
-      <header className="sticky top-0 z-[80] bg-[#f0f3ff]/95 backdrop-blur-md border-b border-indigo-100/50 px-5 py-4 flex items-center justify-between shadow-sm">
+      {/* Шапка стала более компактной (py-2.5 вместо py-4) */}
+      <header className="sticky top-0 z-[80] bg-[#f0f3ff]/95 backdrop-blur-md border-b border-indigo-100/50 px-5 py-2.5 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3" onClick={() => onNavigate('home')}>
-          <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-md">ОА</div>
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-[10px] shadow-md">ОА</div>
           <div className="flex flex-col">
-             <span className="font-bold text-slate-900 text-[13px] tracking-tight uppercase leading-none">О ГЕТКУРС</span>
-             <span className="font-bold text-indigo-500 text-[9px] tracking-widest uppercase mt-0.5">И НЕ ТОЛЬКО</span>
+             <span className="font-bold text-slate-900 text-[12px] tracking-tight uppercase leading-none">О ГЕТКУРС</span>
+             <span className="font-bold text-indigo-500 text-[8px] tracking-widest uppercase mt-0.5">И НЕ ТОЛЬКО</span>
           </div>
         </div>
         <button onClick={() => onNavigate('admin')} className={`p-2 transition-all rounded-xl ${activeView === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'text-indigo-200'}`}>
-          <ShieldCheck size={20} strokeWidth={2.5} />
+          <ShieldCheck size={18} strokeWidth={2.5} />
         </button>
       </header>
 
-      <main className="flex-grow p-5 pb-32">
+      {/* Основной отступ уменьшен (p-4 вместо p-5) */}
+      <main className="flex-grow p-4 pb-32">
         {children}
       </main>
 
-      {/* Навигация с выделенным фоном */}
+      {/* Навигация */}
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#f0f3ff]/95 backdrop-blur-xl border-t border-indigo-100/50 grid grid-cols-5 h-20 px-2 z-[90] pb-safe shadow-[0_-8px_30px_rgba(79,70,229,0.08)]">
         {navItems.map((item) => {
           const Icon = item.icon;
