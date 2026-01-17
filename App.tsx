@@ -209,6 +209,7 @@ const App: React.FC = () => {
               prodamusId: p.prodamusid || p.prodamusId || '',
               externalLink: p.externallink || p.externalLink || '',
               detailFullDescription: p.detailfulldescription || p.detailFullDescription || '',
+              detailButtonText: p.detailbuttontext || p.detailButtonText || p.buttontext || p.buttonText || '',
               detailGallery: gallery
             };
           });
@@ -250,12 +251,13 @@ const App: React.FC = () => {
   const filteredProducts = useMemo(() => products.filter(p => p.section === 'shop' && (filter === 'All' || p.category === filter)), [products, filter]);
   const categories = useMemo(() => Array.from(new Set(products.filter(p => p.section === 'shop').map(p => p.category))).filter(Boolean), [products]);
 
-  // УЛУЧШЕННАЯ НАВИГАЦИЯ: Закрываем все модальные слои при переходе
   const handleNavigate = (newView: ViewState) => { 
     setView(newView); 
-    setActiveDetailProduct(null); // Закрываем лонгрид
-    setCheckoutProduct(null);      // Закрываем окно оплаты
-    setFullscreenImage(null);     // Закрываем галерею
+    setActiveDetailProduct(null); 
+    setCheckoutProduct(null);      
+    setFullscreenImage(null);     
+    setActivePaymentUrl(null);    // ТОЧЕЧНО: закрываем окно оплаты при навигации
+    setIframeLoaded(false);       // ТОЧЕЧНО: сбрасываем статус загрузки оплаты
     window.scrollTo(0, 0); 
   };
 
@@ -379,7 +381,7 @@ const App: React.FC = () => {
           </div>
           <div className="fixed bottom-24 left-6 right-6">
             <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor || '#6366f1' }} className="w-full text-white py-5 rounded-2xl font-bold uppercase text-[12px] tracking-widest shadow-2xl flex items-center justify-center gap-3">
-              {activeDetailProduct.detailButtonText || 'ЗАКАЗАТЬ РЕШЕНИЕ'} <ChevronRight size={18} />
+              {activeDetailProduct.detailButtonText || activeDetailProduct.buttonText || 'ЗАКАЗАТЬ РЕШЕНИЕ'} <ChevronRight size={18} />
             </button>
           </div>
         </div>
