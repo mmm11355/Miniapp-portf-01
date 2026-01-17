@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
-import { RefreshCw, Users, CreditCard, MapPin, ListOrdered, CheckCircle, Clock } from 'lucide-react';
+import { RefreshCw, Users, CreditCard, MapPin, ListOrdered, CheckCircle, Clock, User } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -18,7 +18,6 @@ const AdminDashboard: React.FC = () => {
       const data = await res.json();
       if (data.status === 'success') {
         setSessions(data.sessions || []);
-        // Синхронизируем локальные статусы с данными из таблицы
         setOrders(data.orders || []);
       }
     } catch (e) {} finally { setLoading(false); }
@@ -28,7 +27,11 @@ const AdminDashboard: React.FC = () => {
 
   const stats = useMemo(() => {
     const counts: Record<string, number> = {};
-    sessions.forEach(s => { const city = s.city || 'Неизвестно'; counts[city] = (counts[city] || 0) + 1; });
+    sessions.forEach(s => { 
+      // Группируем по пользователям, если город - это ник
+      const label = s.city || 'Неизвестно'; 
+      counts[label] = (counts[label] || 0) + 1; 
+    });
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 5);
   }, [sessions]);
 
@@ -53,12 +56,12 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 premium-shadow space-y-6">
-        <div className="flex items-center gap-3"><MapPin size={20} className="text-indigo-600" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-800">География</h3></div>
+        <div className="flex items-center gap-3"><User size={20} className="text-indigo-600" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-800">Активность пользователей</h3></div>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stats} layout="vertical">
               <XAxis type="number" hide />
-              <YAxis dataKey="name" type="category" width={100} fontSize={10} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontWeight: 700}} />
+              <YAxis dataKey="name" type="category" width={120} fontSize={10} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontWeight: 700}} />
               <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)'}} />
               <Bar dataKey="value" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={24} />
             </BarChart>
@@ -70,12 +73,16 @@ const AdminDashboard: React.FC = () => {
         <div className="flex items-center gap-3 px-2"><ListOrdered size={20} className="text-indigo-600" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-800">Журнал продаж</h3></div>
         <div className="space-y-3">
           {orders.length === 0 ? <p className="text-center text-slate-300 py-10 font-bold uppercase text-[10px]">Заказов пока нет</p> : 
-            orders.slice(0, 10).map((o, i) => (
+            orders.slice(0, 15).map((o, i) => (
               <div key={i} className="bg-white border border-slate-50 p-6 rounded-[2rem] premium-shadow transition-all hover:border-indigo-100">
                 <div className="flex justify-between items-start mb-4">
                   <div className="space-y-1">
                     <p className="text-sm font-black text-slate-900">{o.productTitle || 'Товар'}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{o.customerEmail || 'No Email'}</p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tight">{o.tgUsername || '@guest'}</span>
+                      <span className="text-[10px] text-slate-300">|</span>
+                      <span className="text-[10px] font-medium text-slate-400">{o.customerName}</span>
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-black text-indigo-600">{o.price} ₽</div>
@@ -90,11 +97,11 @@ const AdminDashboard: React.FC = () => {
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 uppercase tracking-wider">
-                        <Clock size={14} /> В ожидании
+                        <Clock size={14} /> Ожидание
                       </div>
                     )}
                   </div>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">{o.customerName}</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase">{o.customerPhone}</span>
                 </div>
               </div>
             ))

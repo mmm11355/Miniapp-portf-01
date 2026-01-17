@@ -33,7 +33,7 @@ export interface OrderLog {
   tgUsername?: string; 
   utmSource: string;
   agreedToMarketing?: boolean;
-  paymentStatus: 'pending' | 'paid' | 'failed'; // Статус оплаты
+  paymentStatus: 'pending' | 'paid' | 'failed';
 }
 
 export interface Session {
@@ -47,6 +47,7 @@ export interface Session {
   utmSource: string;
   utmMedium: string;
   utmCampaign: string;
+  tgUsername?: string; // Новое поле для идентификации сессии
 }
 
 export interface TelegramConfig {

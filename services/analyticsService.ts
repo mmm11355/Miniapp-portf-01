@@ -8,9 +8,13 @@ const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycby3JT65rFs7fB4n
 const getTgUsername = () => {
   try {
     const tg = (window as any).Telegram?.WebApp;
-    return tg?.initDataUnsafe?.user?.username ? `@${tg.initDataUnsafe.user.username}` : 'нет_ника';
+    // Пытаемся достать ник, если нет ника - достаем имя и фамилию
+    const user = tg?.initDataUnsafe?.user;
+    if (user?.username) return `@${user.username}`;
+    if (user?.first_name) return `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`;
+    return 'Гость';
   } catch (e) {
-    return 'undefined';
+    return 'Unknown';
   }
 };
 
@@ -80,7 +84,7 @@ export const analyticsService = {
       action: 'log',
       type: 'order',
       sessionId: currentSessionId || globalSessionId || 'unknown',
-      name: newOrder.customerName,
+      name: `${tgUsername} (${newOrder.customerName})`, // Объединяем ник и введенное имя для таблицы
       email: newOrder.customerEmail,
       phone: newOrder.customerPhone,
       tgUsername: tgUsername,
@@ -107,7 +111,7 @@ export const analyticsService = {
         type: 'path_update',
         sessionId: globalSessionId || 'unknown',
         path: `payment_${status}`,
-        product: `Статус заказа ${orderId} изменен на ${status}`,
+        product: `Статус заказа ${orderId} изменен на ${status} (Пользователь: ${getTgUsername()})`,
         dateStr: formatNow()
       });
     }
@@ -125,13 +129,14 @@ export const analyticsService = {
     const newSession: Session = {
       id: sessionId,
       startTime: timestamp,
-      city: 'Mobile Device',
-      country: 'Detected',
+      city: tgUsername, // Записываем ник в поле города для быстрой фильтрации в таблице
+      country: 'Active',
       pathHistory: ['home'],
       duration: 0,
       utmSource: utmSource,
       utmMedium: params.get('utm_medium') || 'none',
-      utmCampaign: params.get('utm_campaign') || 'none'
+      utmCampaign: params.get('utm_campaign') || 'none',
+      tgUsername: tgUsername
     };
 
     const sessions = analyticsService.getSessions();
@@ -143,8 +148,9 @@ export const analyticsService = {
       type: 'session_start',
       sessionId: sessionId,
       tgUsername: tgUsername,
-      city: 'Mobile/Web',
-      country: 'Active',
+      name: tgUsername, // Для колонки "Имя" в таблице
+      city: tgUsername,
+      country: 'App',
       utmSource: utmSource,
       dateStr: formatNow()
     });
@@ -156,18 +162,22 @@ export const analyticsService = {
     if (!sessionId) return;
     const sessions = analyticsService.getSessions();
     const index = sessions.findIndex(s => s.id === sessionId);
+    const tgUsername = getTgUsername();
+    
     if (index !== -1) {
       if (!sessions[index].pathHistory.includes(path)) {
         sessions[index].pathHistory.push(path);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
       }
     }
+    
     await sendToScript({
       action: 'log',
       type: 'path_update',
       sessionId: sessionId,
+      tgUsername: tgUsername,
       path: path,
-      product: `Переход: ${path}`,
+      product: `Переход: ${path} [Пользователь: ${tgUsername}]`,
       dateStr: formatNow()
     });
   }
