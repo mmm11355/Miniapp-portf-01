@@ -15,10 +15,12 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const isProcessingRef = useRef(false); 
   
+  // КЭШ-БАСТИНГ: v28 для принудительного обновления структуры данных у пользователей
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const saved = localStorage.getItem('olga_products_v27');
+      const saved = localStorage.getItem('olga_products_v28');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -117,63 +119,85 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkInterval = setInterval(async () => {
-      const orders = analyticsService.getOrders();
-      const now = Date.now();
-      const processedNotifies = JSON.parse(localStorage.getItem('olga_processed_notifies') || '[]');
-      const processedCancelled = JSON.parse(localStorage.getItem('olga_processed_cancelled') || '[]');
-      
-      let cloudOrders: any[] = [];
+      if (isProcessingRef.current || !telegramConfig.botToken || !telegramConfig.chatId) return;
+      isProcessingRef.current = true;
+
       try {
+        const orders = analyticsService.getOrders();
+        const now = Date.now();
+        
+        const safeParse = (key: string) => {
+          try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) { return []; }
+        };
+
+        const processedNotifies = safeParse('olga_processed_notifies');
+        const processedCancelled = safeParse('olga_processed_cancelled');
+        
+        let cloudOrders: any[] = [];
         if (telegramConfig.googleSheetWebhook) {
-          const res = await fetch(`${telegramConfig.googleSheetWebhook}?action=getStats&_t=${now}`);
-          const data = await res.json();
-          if (data.status === 'success') cloudOrders = data.orders || [];
-        }
-      } catch (e) {}
-
-      for (const order of orders) {
-        const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
-        const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
-
-        if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
-          await analyticsService.updateOrderStatus(order.id, 'failed');
-          
-          const cancelMsg = `<b>🔴 ЗАКАЗ ОТМЕНЕН (10 МИН)</b>\n\n` +
-                            `<b>ID:</b> <code>${order.id}</code>\n` +
-                            `<b>Клиент:</b> ${order.customerName}\n` +
-                            `<b>Товар:</b> ${order.productTitle}\n` +
-                            `<b>Сумма:</b> ${order.price} ₽\n\n` +
-                            `<i>Заказ перенесен в архив из-за отсутствия оплаты.</i>`;
           try {
-            await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: telegramConfig.chatId, text: cancelMsg, parse_mode: 'HTML' })
-            });
-            processedCancelled.push(order.id);
-            localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
-          } catch (e) {}
-          continue;
+            const res = await fetch(`${telegramConfig.googleSheetWebhook}?action=getStats&_t=${now}`);
+            const data = await res.json();
+            if (data.status === 'success') cloudOrders = data.orders || [];
+          } catch (e) { console.warn("Monitoring: Cloud Fetch Fail", e); }
         }
 
-        if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
-          const message = `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>Клиент:</b> ${order.customerName}\n<b>Товар:</b> ${order.productTitle}\n<b>Сумма:</b> ${order.price} ₽`;
-          try {
-            await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: telegramConfig.chatId, text: message, parse_mode: 'HTML' })
-            });
-            processedNotifies.push(order.id);
-            localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
-          } catch (e) {}
-        }
+        const sanitize = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        if (isPaid && order.paymentStatus !== 'paid') {
-          analyticsService.updateOrderStatus(order.id, 'paid');
+        for (const order of orders) {
+          const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
+          const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
+
+          // ЕСЛИ ПРОШЛО 10 МИНУТ И НЕ ОПЛАЧЕНО
+          if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
+            const cancelMsg = `<b>🔴 ЗАКАЗ ОТМЕНЕН (10 МИН)</b>\n\n` +
+                              `<b>ID:</b> <code>${order.id}</code>\n` +
+                              `<b>Клиент:</b> ${sanitize(order.customerName)}\n` +
+                              `<b>Товар:</b> ${sanitize(order.productTitle)}\n` +
+                              `<b>Сумма:</b> ${order.price} ₽\n\n` +
+                              `<i>Заказ перенесен в архив.</i>`;
+            try {
+              const res = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: telegramConfig.chatId, text: cancelMsg, parse_mode: 'HTML' })
+              });
+              
+              if (res.ok) { // ТОЛЬКО ПРИ УСПЕШНОЙ ОТПРАВКЕ ПИШЕМ В АРХИВ
+                await analyticsService.updateOrderStatus(order.id, 'failed');
+                processedCancelled.push(order.id);
+                localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
+              }
+            } catch (e) { console.error("Monitoring: Cancel Notify Failed", e); }
+            continue;
+          }
+
+          // ЕСЛИ ПРОШЛО 5 МИНУТ И НЕ ОПЛАЧЕНО
+          if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
+            const message = `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>Клиент:</b> ${sanitize(order.customerName)}\n<b>Товар:</b> ${sanitize(order.productTitle)}\n<b>Сумма:</b> ${order.price} ₽`;
+            try {
+              const res = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: telegramConfig.chatId, text: message, parse_mode: 'HTML' })
+              });
+              if (res.ok) {
+                processedNotifies.push(order.id);
+                localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
+              }
+            } catch (e) { console.error("Monitoring: Pending Notify Failed", e); }
+          }
+
+          if (isPaid && order.paymentStatus !== 'paid') {
+            await analyticsService.updateOrderStatus(order.id, 'paid');
+          }
         }
+      } catch (globalError) {
+        console.error("Monitoring: Critical Error", globalError);
+      } finally {
+        isProcessingRef.current = false;
       }
-    }, 60000);
+    }, 60000); // Раз в минуту
     return () => clearInterval(checkInterval);
   }, [telegramConfig]);
 
@@ -191,6 +215,10 @@ const App: React.FC = () => {
             Object.keys(item).forEach(key => { p[key.trim().toLowerCase()] = item[key]; });
             let gallery = [];
             try { gallery = typeof (p.detailgallery || p.detailGallery) === 'string' ? JSON.parse(p.detailgallery || p.detailGallery) : (p.detailgallery || p.detailGallery || []); } catch (e) {}
+            
+            // УЛУЧШЕННЫЙ МАППИНГ ДЛЯ ТЕКСТА КНОПКИ ЛОНГРИДА
+            const dBtnText = p.detailbuttontext || p.detailbutton || p.кнопкалонгрида || p.detailButtonText || p.buttontext || p.buttonText || '';
+
             return {
               ...p,
               id: p.id ? String(p.id) : `row-${index + 2}`,
@@ -209,12 +237,12 @@ const App: React.FC = () => {
               prodamusId: p.prodamusid || p.prodamusId || '',
               externalLink: p.externallink || p.externalLink || '',
               detailFullDescription: p.detailfulldescription || p.detailFullDescription || '',
-              detailButtonText: p.detailbuttontext || p.detailButtonText || p.buttontext || p.buttonText || '',
+              detailButtonText: dBtnText, 
               detailGallery: gallery
             };
           });
         setProducts(sanitizedData);
-        localStorage.setItem('olga_products_v27', JSON.stringify(sanitizedData));
+        localStorage.setItem('olga_products_v28', JSON.stringify(sanitizedData));
       }
     } catch (e) {} finally { if (showLoading) setIsSyncing(false); }
   }, [telegramConfig.googleSheetWebhook]);
@@ -256,8 +284,8 @@ const App: React.FC = () => {
     setActiveDetailProduct(null); 
     setCheckoutProduct(null);      
     setFullscreenImage(null);     
-    setActivePaymentUrl(null);    // ТОЧЕЧНО: закрываем окно оплаты при навигации
-    setIframeLoaded(false);       // ТОЧЕЧНО: сбрасываем статус загрузки оплаты
+    setActivePaymentUrl(null);    
+    setIframeLoaded(false);       
     window.scrollTo(0, 0); 
   };
 
