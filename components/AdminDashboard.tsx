@@ -1,12 +1,14 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
-import { RefreshCw, Users, CreditCard, MapPin, ListOrdered, CheckCircle, Clock, User } from 'lucide-react';
+// Add X to imports from lucide-react
+import { RefreshCw, Users, CreditCard, MapPin, ListOrdered, CheckCircle, Clock, User, Archive, Activity, X } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
   const [sessions, setSessions] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
 
   const fetchData = async () => {
     setLoading(true);
@@ -28,12 +30,18 @@ const AdminDashboard: React.FC = () => {
   const stats = useMemo(() => {
     const counts: Record<string, number> = {};
     sessions.forEach(s => { 
-      // Группируем по пользователям, если город - это ник
       const label = s.city || 'Неизвестно'; 
       counts[label] = (counts[label] || 0) + 1; 
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 5);
   }, [sessions]);
+
+  const filteredOrders = useMemo(() => {
+    if (activeTab === 'active') {
+      return orders.filter(o => o.paymentStatus !== 'failed');
+    }
+    return orders.filter(o => o.paymentStatus === 'failed');
+  }, [orders, activeTab]);
 
   return (
     <div className="space-y-8 page-transition pb-20">
@@ -51,7 +59,7 @@ const AdminDashboard: React.FC = () => {
         </div>
         <div className="bg-[#f8f7ff] p-6 rounded-[2rem] border border-slate-50 shadow-sm space-y-2">
           <div className="flex items-center gap-2 text-emerald-600 mb-2"><CreditCard size={16} /><span className="text-[10px] font-black uppercase tracking-widest">Заказы</span></div>
-          <p className="text-4xl font-black text-slate-900">{orders.length}</p>
+          <p className="text-4xl font-black text-slate-900">{orders.filter(o => o.paymentStatus === 'paid').length}</p>
         </div>
       </div>
 
@@ -70,11 +78,31 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        <div className="flex items-center gap-3 px-2"><ListOrdered size={20} className="text-indigo-600" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-800">Журнал продаж</h3></div>
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-3">
+            <ListOrdered size={20} className="text-indigo-600" />
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-800">Журнал продаж</h3>
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button 
+              onClick={() => setActiveTab('active')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === 'active' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+            >
+              <Activity size={12} /> Активные
+            </button>
+            <button 
+              onClick={() => setActiveTab('archive')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === 'archive' ? 'bg-white text-rose-500 shadow-sm' : 'text-slate-400'}`}
+            >
+              <Archive size={12} /> Архив
+            </button>
+          </div>
+        </div>
+        
         <div className="space-y-3">
-          {orders.length === 0 ? <p className="text-center text-slate-300 py-10 font-bold uppercase text-[10px]">Заказов пока нет</p> : 
-            orders.slice(0, 15).map((o, i) => (
-              <div key={i} className="bg-white border border-slate-50 p-6 rounded-[2rem] premium-shadow transition-all hover:border-indigo-100">
+          {filteredOrders.length === 0 ? <p className="text-center text-slate-300 py-10 font-bold uppercase text-[10px]">{activeTab === 'active' ? 'Активных заказов нет' : 'Архив пуст'}</p> : 
+            filteredOrders.slice(0, 30).map((o, i) => (
+              <div key={i} className={`bg-white border border-slate-50 p-6 rounded-[2rem] premium-shadow transition-all ${o.paymentStatus === 'failed' ? 'opacity-60 border-rose-50' : 'hover:border-indigo-100'}`}>
                 <div className="flex justify-between items-start mb-4">
                   <div className="space-y-1">
                     <p className="text-sm font-black text-slate-900">{o.productTitle || 'Товар'}</p>
@@ -85,7 +113,7 @@ const AdminDashboard: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-black text-indigo-600">{o.price} ₽</div>
+                    <div className={`text-sm font-black ${o.paymentStatus === 'failed' ? 'text-slate-400' : 'text-indigo-600'}`}>{o.price} ₽</div>
                     <div className="text-[9px] font-bold text-slate-300 uppercase">{new Date(o.timestamp).toLocaleDateString()}</div>
                   </div>
                 </div>
@@ -94,6 +122,10 @@ const AdminDashboard: React.FC = () => {
                     {o.paymentStatus === 'paid' ? (
                       <div className="flex items-center gap-1.5 text-[9px] font-black text-emerald-500 uppercase tracking-wider">
                         <CheckCircle size={14} /> Оплачено
+                      </div>
+                    ) : o.paymentStatus === 'failed' ? (
+                      <div className="flex items-center gap-1.5 text-[9px] font-black text-rose-400 uppercase tracking-wider">
+                        <X size={14} /> Отменено
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 uppercase tracking-wider">

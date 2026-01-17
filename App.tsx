@@ -73,7 +73,6 @@ const App: React.FC = () => {
     return <img src={url} className={`${isDetail ? 'w-full h-auto rounded-2xl shadow-sm mx-auto' : className}`} alt="" onClick={onClick} style={{ objectFit: isDetail ? 'contain' : 'cover', cursor: isDetail ? 'zoom-in' : 'pointer' }} />;
   };
 
-  // Улучшенный рендерер контента: поддерживает 16px, ссылки и теги [[image:url]] / [[video:url]]
   const renderRichContent = (text: string) => {
     if (!text) return null;
     const parts = text.split(/(\[\[(?:image|video):[^\]]+\]\])/g);
@@ -83,7 +82,6 @@ const App: React.FC = () => {
       <div className="text-[16px] font-medium text-slate-600 leading-[1.4] whitespace-pre-wrap">
         {parts.map((part, i) => {
           const mediaMatch = part.match(/\[\[(image|video):([^\]]+)\]\]/);
-          
           if (mediaMatch) {
             const [_, type, url] = mediaMatch;
             const mediaUrl = url.trim();
@@ -98,7 +96,6 @@ const App: React.FC = () => {
               </div>
             );
           }
-
           return (
             <React.Fragment key={i}>
               {part.split(urlRegex).map((subPart, j) => {
@@ -118,12 +115,14 @@ const App: React.FC = () => {
     );
   };
 
-  // МОНИТОРИНГ И ОСТАЛЬНАЯ ЛОГИКА (НЕ ТРОГАЕМ)
+  // МОНИТОРИНГ (Внедрена логика отмены 10 минут)
   useEffect(() => {
     const checkInterval = setInterval(async () => {
       const orders = analyticsService.getOrders();
       const now = Date.now();
       const processedNotifies = JSON.parse(localStorage.getItem('olga_processed_notifies') || '[]');
+      const processedCancelled = JSON.parse(localStorage.getItem('olga_processed_cancelled') || '[]');
+      
       let cloudOrders: any[] = [];
       try {
         if (telegramConfig.googleSheetWebhook) {
@@ -132,13 +131,38 @@ const App: React.FC = () => {
           if (data.status === 'success') cloudOrders = data.orders || [];
         }
       } catch (e) {}
+
       for (const order of orders) {
-        if ((now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
-          const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
-          const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
-          const message = isPaid 
-            ? `<b>✅ ОПЛАТА ПОДТВЕРЖДЕНА</b>\n\n<b>Клиент:</b> ${order.customerName}\n<b>Товар:</b> ${order.productTitle}\n<b>Сумма:</b> ${order.price} ₽`
-            : `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>Клиент:</b> ${order.customerName}\n<b>Товар:</b> ${order.productTitle}\n<b>Сумма:</b> ${order.price} ₽`;
+        const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
+        const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
+
+        // ПРОВЕРКА 10 МИНУТ: АВТО-ОТМЕНА
+        if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 10 * 60 * 1000 && !processedCancelled.includes(order.id)) {
+          // 1. Отменяем локально и в таблице
+          await analyticsService.updateOrderStatus(order.id, 'failed');
+          
+          // 2. Уведомление в TG
+          const cancelMsg = `<b>🔴 ЗАКАЗ ОТМЕНЕН (10 МИН)</b>\n\n` +
+                            `<b>ID:</b> <code>${order.id}</code>\n` +
+                            `<b>Клиент:</b> ${order.customerName}\n` +
+                            `<b>Товар:</b> ${order.productTitle}\n` +
+                            `<b>Сумма:</b> ${order.price} ₽\n\n` +
+                            `<i>Заказ перенесен в архив из-за отсутствия оплаты.</i>`;
+          try {
+            await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: telegramConfig.chatId, text: cancelMsg, parse_mode: 'HTML' })
+            });
+            processedCancelled.push(order.id);
+            localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
+          } catch (e) {}
+          continue;
+        }
+
+        // ПРОВЕРКА 5 МИНУТ: ПРЕДУПРЕЖДЕНИЕ (существующая логика)
+        if (!isPaid && order.paymentStatus === 'pending' && (now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
+          const message = `<b>⚠️ ОПЛАТА НЕ НАЙДЕНА (5 МИН)</b>\n\n<b>Клиент:</b> ${order.customerName}\n<b>Товар:</b> ${order.productTitle}\n<b>Сумма:</b> ${order.price} ₽`;
           try {
             await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
               method: 'POST',
@@ -148,6 +172,11 @@ const App: React.FC = () => {
             processedNotifies.push(order.id);
             localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
           } catch (e) {}
+        }
+
+        // Обновляем статус, если оплата пришла в облако
+        if (isPaid && order.paymentStatus !== 'paid') {
+          analyticsService.updateOrderStatus(order.id, 'paid');
         }
       }
     }, 60000);

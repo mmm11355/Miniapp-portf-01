@@ -8,7 +8,6 @@ const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycby3JT65rFs7fB4n
 const getTgUsername = () => {
   try {
     const tg = (window as any).Telegram?.WebApp;
-    // Пытаемся достать ник, если нет ника - достаем имя и фамилию
     const user = tg?.initDataUnsafe?.user;
     if (user?.username) return `@${user.username}`;
     if (user?.first_name) return `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`;
@@ -84,7 +83,7 @@ export const analyticsService = {
       action: 'log',
       type: 'order',
       sessionId: currentSessionId || globalSessionId || 'unknown',
-      name: `${tgUsername} (${newOrder.customerName})`, // Объединяем ник и введенное имя для таблицы
+      name: `${tgUsername} (${newOrder.customerName})`,
       email: newOrder.customerEmail,
       phone: newOrder.customerPhone,
       tgUsername: tgUsername,
@@ -111,7 +110,9 @@ export const analyticsService = {
         type: 'path_update',
         sessionId: globalSessionId || 'unknown',
         path: `payment_${status}`,
-        product: `Статус заказа ${orderId} изменен на ${status} (Пользователь: ${getTgUsername()})`,
+        paymentStatus: status, // Передаем статус для таблицы
+        orderId: orderId,
+        product: `Статус заказа ${orderId} изменен на ${status === 'paid' ? 'Оплачено' : 'Отменено'} (Пользователь: ${getTgUsername()})`,
         dateStr: formatNow()
       });
     }
@@ -129,7 +130,7 @@ export const analyticsService = {
     const newSession: Session = {
       id: sessionId,
       startTime: timestamp,
-      city: tgUsername, // Записываем ник в поле города для быстрой фильтрации в таблице
+      city: tgUsername,
       country: 'Active',
       pathHistory: ['home'],
       duration: 0,
@@ -148,7 +149,7 @@ export const analyticsService = {
       type: 'session_start',
       sessionId: sessionId,
       tgUsername: tgUsername,
-      name: tgUsername, // Для колонки "Имя" в таблице
+      name: tgUsername,
       city: tgUsername,
       country: 'App',
       utmSource: utmSource,
