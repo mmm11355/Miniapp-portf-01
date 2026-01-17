@@ -39,6 +39,83 @@ const App: React.FC = () => {
     };
   });
 
+  const MediaRenderer: React.FC<{ url: string; type: 'image' | 'video'; className?: string; onClick?: () => void; isDetail?: boolean }> = ({ url, type, className, onClick, isDetail }) => {
+    if (!url) return null;
+    const isDirectVideo = url.match(/\.(mp4|webm|mov|gif|m4v|avi)$/i);
+    const isRutube = url.includes('rutube.ru');
+    const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
+    if (isRutube || isYoutube) {
+      let embedUrl = url;
+      if (isRutube) {
+        if (url.includes('/video/')) embedUrl = url.replace('/video/', '/play/embed/');
+        else if (!url.includes('/play/embed/')) {
+          const id = url.split('/').filter(Boolean).pop();
+          embedUrl = `https://rutube.ru/play/embed/${id}/`;
+        }
+      } else if (isYoutube) {
+        if (url.includes('watch?v=')) embedUrl = url.replace('watch?v=', 'embed/');
+        else if (url.includes('youtu.be/')) embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
+      }
+      return (
+        <div className={`relative w-full aspect-video overflow-hidden shadow-sm bg-black ${isDetail ? 'rounded-2xl' : 'rounded-lg'}`}>
+          <iframe src={embedUrl} className="w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen></iframe>
+        </div>
+      );
+    }
+    if (type === 'video' || isDirectVideo) {
+      return (
+        <div className={`relative w-full overflow-hidden ${isDetail ? 'rounded-2xl bg-black shadow-sm' : 'h-full'}`} onClick={onClick}>
+          <video src={url} className={isDetail ? 'w-full h-auto max-h-[65vh] mx-auto' : className} autoPlay muted loop playsInline preload="auto" style={{ objectFit: isDetail ? 'contain' : 'cover' }} />
+          {!isDetail && <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none"><PlayCircle size={36} className="text-white opacity-40" /></div>}
+        </div>
+      );
+    }
+    return <img src={url} className={`${isDetail ? 'w-full h-auto rounded-2xl shadow-sm mx-auto' : className}`} alt="" onClick={onClick} style={{ objectFit: isDetail ? 'contain' : 'cover', cursor: isDetail ? 'zoom-in' : 'pointer' }} />;
+  };
+
+  // Умный рендерер контента с поддержкой чередования медиа и текста
+  const renderRichContent = (text: string) => {
+    if (!text) return null;
+    // Разбиваем текст по тегам [[image:url]] или [[video:url]]
+    const parts = text.split(/(\[\[(?:image|video):[^\]]+\]\])/g);
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+    return parts.map((part, i) => {
+      const mediaMatch = part.match(/\[\[(image|video):([^\]]+)\]\]/);
+      
+      if (mediaMatch) {
+        const [_, type, url] = mediaMatch;
+        const mediaUrl = url.trim();
+        return (
+          <div key={i} className="my-6">
+            <MediaRenderer 
+              url={mediaUrl} 
+              type={type as 'image' | 'video'} 
+              isDetail={true} 
+              onClick={() => type === 'image' && setFullscreenImage(mediaUrl)} 
+            />
+          </div>
+        );
+      }
+
+      // Обычный текст с линками
+      return (
+        <React.Fragment key={i}>
+          {part.split(urlRegex).map((subPart, j) => {
+            if (subPart.match(urlRegex)) {
+              return (
+                <a key={j} href={subPart} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 break-all font-bold">
+                  {subPart}
+                </a>
+              );
+            }
+            return subPart;
+          })}
+        </React.Fragment>
+      );
+    });
+  };
+
   // УМНЫЙ МОНИТОРИНГ (5 МИНУТ)
   useEffect(() => {
     const checkInterval = setInterval(async () => {
@@ -46,7 +123,6 @@ const App: React.FC = () => {
       const now = Date.now();
       const processedNotifies = JSON.parse(localStorage.getItem('olga_processed_notifies') || '[]');
       
-      // Сначала пробуем обновить статусы из таблицы, чтобы не слать ложные алерты
       let cloudOrders: any[] = [];
       try {
         if (telegramConfig.googleSheetWebhook) {
@@ -57,10 +133,7 @@ const App: React.FC = () => {
       } catch (e) {}
 
       for (const order of orders) {
-        // Если прошло 5 минут и мы еще не уведомляли
         if ((now - order.timestamp) > 5 * 60 * 1000 && !processedNotifies.includes(order.id)) {
-          
-          // Проверяем, не оплачен ли он уже в облаке (в таблице)
           const cloudOrder = cloudOrders.find((co: any) => co.id === order.id);
           const isPaid = cloudOrder?.paymentStatus === 'paid' || order.paymentStatus === 'paid';
 
@@ -80,23 +153,17 @@ const App: React.FC = () => {
             await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: telegramConfig.chatId,
-                text: message,
-                parse_mode: 'HTML'
-              })
+              body: JSON.stringify({ chat_id: telegramConfig.chatId, text: message, parse_mode: 'HTML' })
             });
             processedNotifies.push(order.id);
             localStorage.setItem('olga_processed_notifies', JSON.stringify(processedNotifies));
-            
-            // Если статус в облаке был 'paid', обновим и у себя локально
             if (isPaid && order.paymentStatus !== 'paid') {
               analyticsService.updateOrderStatus(order.id, 'paid');
             }
           } catch (e) {}
         }
       }
-    }, 60000); // Проверка каждую минуту
+    }, 60000);
 
     return () => clearInterval(checkInterval);
   }, [telegramConfig]);
@@ -212,10 +279,8 @@ const App: React.FC = () => {
 
   const sendTelegramNotification = async (order: OrderLog) => {
     if (!telegramConfig.botToken || !telegramConfig.chatId) return;
-    
     const tg = (window as any).Telegram?.WebApp;
     const tgHandle = tg?.initDataUnsafe?.user?.username ? `@${tg.initDataUnsafe.user.username}` : 'не задан';
-
     const message = `<b>🚀 НОВЫЙ ЗАКАЗ (ИНИЦИИРОВАН)</b>\n\n` +
                     `<b>ID:</b> <code>${order.id}</code>\n` +
                     `<b>Товар:</b> ${order.productTitle}\n` +
@@ -225,16 +290,11 @@ const App: React.FC = () => {
                     `<b>🔹 Ник в TG:</b> ${tgHandle}\n` +
                     `<b>📢 Рассылки:</b> ${order.agreedToMarketing ? 'Да ✅' : 'Нет ❌'}\n\n` +
                     `<i>Я сообщу через 5 минут, если статус не изменится на "Оплачено".</i>`;
-    
     try {
       await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: telegramConfig.chatId,
-          text: message,
-          parse_mode: 'HTML'
-        })
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ chat_id: telegramConfig.chatId, text: message, parse_mode: 'HTML' })
       });
     } catch (e) {}
   };
@@ -243,7 +303,6 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!checkoutProduct || isSubmitting || !agreedToOferta || !agreedToPrivacy) return;
     setIsSubmitting(true);
-    
     try {
       const order = await analyticsService.logOrder({
         productTitle: checkoutProduct.title, 
@@ -252,20 +311,11 @@ const App: React.FC = () => {
         agreedToMarketing,
         utmSource: new URLSearchParams(window.location.search).get('utm_source') || 'direct'
       }, sessionId);
-
       await sendTelegramNotification(order);
-
       setIframeLoaded(false);
-      
-      // Генерируем ссылку с ID заказа для Продамуса
-      let paymentUrl = checkoutProduct.prodamusId?.startsWith('http') 
-        ? checkoutProduct.prodamusId 
-        : 'https://antol.payform.ru/';
-      
-      // Добавляем ID заказа, чтобы Продамус мог вернуть его в вебхуке
+      let paymentUrl = checkoutProduct.prodamusId?.startsWith('http') ? checkoutProduct.prodamusId : 'https://antol.payform.ru/';
       const connector = paymentUrl.includes('?') ? '&' : '?';
       paymentUrl += `${connector}order_id=${order.id}&customer_email=${encodeURIComponent(customerEmail)}&customer_phone=${encodeURIComponent(customerPhone)}`;
-      
       setActivePaymentUrl(paymentUrl);
       setCheckoutProduct(null);
       setAgreedToOferta(false);
@@ -276,43 +326,6 @@ const App: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const MediaRenderer: React.FC<{ url: string; type: 'image' | 'video'; className?: string; onClick?: () => void; isDetail?: boolean }> = ({ url, type, className, onClick, isDetail }) => {
-    if (!url) return null;
-    const isDirectVideo = url.match(/\.(mp4|webm|mov|gif|m4v|avi)$/i);
-    const isRutube = url.includes('rutube.ru');
-    const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
-    
-    if (isRutube || isYoutube) {
-      let embedUrl = url;
-      if (isRutube) {
-        if (url.includes('/video/')) embedUrl = url.replace('/video/', '/play/embed/');
-        else if (!url.includes('/play/embed/')) {
-          const parts = url.split('/').filter(Boolean);
-          const id = parts[parts.length - 1];
-          embedUrl = `https://rutube.ru/play/embed/${id}/`;
-        }
-      } else if (isYoutube) {
-        if (url.includes('watch?v=')) embedUrl = url.replace('watch?v=', 'embed/');
-        else if (url.includes('youtu.be/')) embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
-      }
-      return (
-        <div className={`relative w-full aspect-video overflow-hidden shadow-sm bg-black ${isDetail ? 'rounded-2xl' : 'rounded-lg'}`}>
-          <iframe src={embedUrl} className="w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen></iframe>
-        </div>
-      );
-    }
-
-    if (type === 'video' || isDirectVideo) {
-      return (
-        <div className={`relative w-full overflow-hidden ${isDetail ? 'rounded-2xl bg-black shadow-sm' : 'h-full'}`} onClick={onClick}>
-          <video src={url} className={isDetail ? 'w-full h-auto max-h-[65vh] mx-auto' : className} autoPlay muted loop playsInline preload="auto" style={{ objectFit: isDetail ? 'contain' : 'cover' }} />
-          {!isDetail && <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none"><PlayCircle size={36} className="text-white opacity-40" /></div>}
-        </div>
-      );
-    }
-    return <img src={url} className={`${isDetail ? 'w-full h-auto rounded-2xl shadow-sm mx-auto' : className}`} alt="" onClick={onClick} style={{ objectFit: isDetail ? 'contain' : 'cover', cursor: isDetail ? 'zoom-in' : 'pointer' }} />;
   };
 
   const renderProductCard = (p: Product) => (
@@ -331,7 +344,7 @@ const App: React.FC = () => {
         <MediaRenderer url={p.imageUrl} type={p.mediaType} className="w-full h-full" onClick={() => { if (p.useDetailModal) setActiveDetailProduct(p); }} />
       </div>
       <div className="px-4 pb-4 space-y-3">
-        <p className="text-[11px] text-slate-500 font-medium leading-relaxed line-clamp-2">{p.description}</p>
+        <div className="text-[16px] text-slate-500 font-medium leading-relaxed line-clamp-3">{renderRichContent(p.description)}</div>
         <button 
           onClick={() => { if (p.useDetailModal) setActiveDetailProduct(p); else if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }}
           style={{ backgroundColor: p.buttonColor || '#6366f1' }}
@@ -413,7 +426,12 @@ const App: React.FC = () => {
                 <MediaRenderer url={activeDetailProduct.imageUrl} type={activeDetailProduct.mediaType} isDetail={true} onClick={() => { if (activeDetailProduct.mediaType === 'image') setFullscreenImage(activeDetailProduct.imageUrl); }} />
               )}
             </div>
-            <div className="space-y-5 pt-4"><div className="h-px bg-slate-50 w-full" /><div className="text-[14px] font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{activeDetailProduct.detailFullDescription || activeDetailProduct.description}</div></div>
+            <div className="space-y-5 pt-4">
+              <div className="h-px bg-slate-50 w-full" />
+              <div className="text-[16px] font-medium text-slate-600 leading-[1.6] whitespace-pre-wrap">
+                {renderRichContent(activeDetailProduct.detailFullDescription || activeDetailProduct.description)}
+              </div>
+            </div>
           </div>
           <div className="fixed bottom-24 left-6 right-6 z-[120]">
             <button onClick={() => { const p = activeDetailProduct; setActiveDetailProduct(null); if (p.section === 'shop') setCheckoutProduct(p); else if (p.externalLink) window.open(p.externalLink, '_blank'); }} style={{ backgroundColor: activeDetailProduct.buttonColor || '#6366f1' }} className="w-full text-white py-5 rounded-2xl font-bold uppercase text-[12px] tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-transform">
