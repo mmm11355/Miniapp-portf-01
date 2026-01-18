@@ -460,7 +460,7 @@ const App: React.FC = () => {
                 </label>
                 <label className="flex items-start gap-3 text-[11px] text-slate-500 font-bold leading-snug cursor-pointer group">
                   <input type="checkbox" className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" checked={agreedToMarketing} onChange={e => setAgreedToMarketing(e.target.checked)} /> 
-                  <span className="group-hover:text-slate-700 transition-colors">Согласен на получение рассылок</span>
+                  <span className="group-hover:text-slate-700 transition-colors">Согласен на получение <a href="https://shopscript.lpxl.ru/soglasie" target="_blank" className="text-indigo-600 font-black underline">рекламных рассылок</a></span>
                 </label>
               </div>
 
