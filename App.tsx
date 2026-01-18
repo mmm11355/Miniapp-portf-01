@@ -272,7 +272,7 @@ const App: React.FC = () => {
       if (match) {
         const [, type, url] = match;
         return (
-          <div key={index} className="my-6">
+          <div key={index} className="my-3">
             <MediaRenderer 
               url={url.trim()} 
               type={type as 'video' | 'image'} 
@@ -381,7 +381,7 @@ const App: React.FC = () => {
           <div className="flex-grow overflow-y-auto p-6 space-y-6 pb-24 no-scrollbar">
             <h2 className="text-2xl font-black text-slate-900 uppercase leading-tight tracking-tight">{activeDetailProduct.title}</h2>
             
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-3">
               {activeDetailProduct.detailGallery && activeDetailProduct.detailGallery.length > 0 ? (
                 activeDetailProduct.detailGallery.map((m:any, i:number) => (
                   <div key={i} className="w-full">
