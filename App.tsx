@@ -40,6 +40,8 @@ const App: React.FC = () => {
     };
   });
 
+  const sanitize = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   const parseSafeDate = (dateVal: any): number => {
     if (!dateVal) return 0;
     if (typeof dateVal === 'number') return dateVal;
@@ -81,7 +83,6 @@ const App: React.FC = () => {
           } catch (e) {}
         }
 
-        const sanitize = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const allOrdersToCheck = [...localOrders];
         cloudOrders.forEach(co => {
           if (!allOrdersToCheck.find(lo => String(lo.id) === String(co.id))) allOrdersToCheck.push(co);
@@ -105,7 +106,7 @@ const App: React.FC = () => {
               localStorage.setItem('olga_processed_cancelled', JSON.stringify(processedCancelled));
 
               if (telegramConfig.botToken && telegramConfig.chatId) {
-                const cancelMsg = `<b>🔴 АВТО-АРХИВАЦИЯ (10 МИН+)</b>\n\n<b>ID:</b> <code>${orderIdStr}</code>\n<b>Товар:</b> ${sanitize(order.productTitle)}`;
+                const cancelMsg = `<b>🔴 АВТО-АРХИВАЦИЯ (10 МИН+)</b>\n\n<b>ID:</b> <code>${orderIdStr}</code>\n<b>Товар:</b> ${sanitize(order.productTitle)}\n<b>Имя:</b> ${sanitize(order.customerName)}\n<b>Email:</b> ${sanitize(order.customerEmail)}\n<b>Username:</b> ${order.tgUsername || '---'}`;
                 fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -220,6 +221,17 @@ const App: React.FC = () => {
         customerName, customerEmail, customerPhone, agreedToMarketing,
         utmSource: new URLSearchParams(window.location.search).get('utm_source') || 'direct'
       }, sessionId);
+
+      // ПРЯМОЕ УВЕДОМЛЕНИЕ В TELEGRAM ПРИ СОЗДАНИИ ЗАКАЗА
+      if (telegramConfig.botToken && telegramConfig.chatId) {
+        const orderMsg = `<b>🆕 НОВЫЙ ЗАКАЗ</b>\n\n<b>Товар:</b> ${sanitize(checkoutProduct.title)}\n<b>Сумма:</b> ${checkoutProduct.price} ₽\n<b>Имя:</b> ${sanitize(customerName)}\n<b>Email:</b> ${sanitize(customerEmail)}\n<b>Тел:</b> ${sanitize(customerPhone)}\n<b>Username:</b> ${order.tgUsername || '---'}\n<b>UTM:</b> ${order.utmSource}`;
+        fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: telegramConfig.chatId, text: orderMsg, parse_mode: 'HTML' })
+        }).catch(() => {});
+      }
+
       let paymentUrl = checkoutProduct.prodamusId?.startsWith('http') ? checkoutProduct.prodamusId : 'https://antol.payform.ru/';
       const connector = paymentUrl.includes('?') ? '&' : '?';
       paymentUrl += `${connector}order_id=${order.id}&customer_email=${encodeURIComponent(customerEmail)}&customer_phone=${encodeURIComponent(customerPhone)}`;
@@ -284,7 +296,10 @@ const App: React.FC = () => {
             </div>
           </div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Ольга Антонова</h1>
-          <p className="text-[16px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
+          <div className="space-y-1">
+            <p className="text-[16px] font-black text-indigo-600 uppercase tracking-widest mt-3">Решения GetCourse & Prodamus.XL</p>
+            <p className="text-[12px] font-bold text-slate-500 uppercase tracking-tight">Кастомизация ЛК, сайты, скрипты, настройка</p>
+          </div>
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4 text-left">
             <div className="flex items-center gap-4"><Trophy className="text-amber-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Победитель Хакатона EdMarket</p></div>
             <div className="flex items-center gap-4"><Award className="text-indigo-500" size={18} /><p className="text-[13px] font-bold text-slate-700">Специалист GetCourse и Prodamus.XL</p></div>
